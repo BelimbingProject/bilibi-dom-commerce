@@ -20,7 +20,7 @@
 {% endif %}
 {{ history }}
 {% else %}
-{% if manage %}{% call ui::button(event="new",variant=bilibi_ui::ButtonVariant::Primary) %}{% if kind == "item" %}+ Product{% elif kind == "quotation" %}+ Quotation{% else %}+ Sales order{% endif %}{% endcall %}{% endif %}
+{% if manage %}{% call ui::button(event="new",button_type="button",variant=bilibi_ui::ButtonVariant::Primary) %}{% if kind == "item" %}+ Product{% elif kind == "quotation" %}+ Quotation{% else %}+ Sales order{% endif %}{% endcall %}{% endif %}
 {{ toolbar }}{{ body }}{{ pagination }}
 {% endif %}
 {% if editing %}
@@ -35,10 +35,10 @@
 {% call forms::field_row(fields=row) %}{% endcall %}
 {% endcall %}
 {% endfor %}
-{% if line_count < 100 %}{% call ui::button(event="add_line") %}+ Line{% endcall %}{% endif %}
+{% if line_count < 100 %}{% call ui::button(event="add_line",button_type="button") %}+ Line{% endcall %}{% endif %}
 {% endif %}
 {% call ui::button(button_type="submit",variant=bilibi_ui::ButtonVariant::Primary) %}{% if kind == "item" %}Create product{% else %}Save draft{% endif %}{% endcall %}
-{% call ui::button(event="close") %}Cancel{% endcall %}
+{% call ui::button(event="close",button_type="button") %}Cancel{% endcall %}
 {% endcall %}
 {% endcall %}
 {% endif %}
