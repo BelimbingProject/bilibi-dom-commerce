@@ -39,7 +39,7 @@ A customer is a Core Company or Person. Enter its existing Core code and choose 
 
 Choose a catalog product and enter its quantity, or type a description, quantity, unit, price, tax code and tax rate. Catalog lines use the current product facts when the document is saved. A zero tax rate must be entered explicitly; Commerce supplies no company-specific tax codes, units, currency or prices.
 
-Documents keep their original lines and totals. Product edits do not rewrite them. To correct a quotation before sending, create a replacement; documents have no draft editor in this first slice. Each accepted quotation can create at most one sales order. Copying it retains the quoted prices and tax, even if the catalog has changed.
+Documents keep their original lines and totals. Product edits do not rewrite them. To correct a quotation before sending, create a replacement; documents have no draft editor in this first slice. Each accepted quotation can create at most one sales order. Copying it retains the quoted prices and tax, even if the catalog has changed, but the customer must still be active and usable; you cannot also enter a customer or lines.
 
 “Sent” records that you sent the quotation yourself; Commerce does not send email. “Accept” and “Reject” record the customer's decision entered by a member of staff. A quotation may be accepted or rejected through its valid-until date. It can be expired after that date, using UTC calendar dates. Expiry is a staff action; there is no scheduled expiry job.
 

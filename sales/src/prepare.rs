@@ -204,8 +204,14 @@ pub(crate) async fn prepare(
         from_quote = Some((id, quote));
     }
     let (customer_kind, customer_code) = match &from_quote {
-        Some((_, q)) => (text(&q.facts, "customer_kind").to_owned(), text(&q.facts, "customer_code").to_owned()),
-        None => (required(v, "customer_kind", 20)?, required(v, "customer_code", 255)?),
+        Some((_, q)) => (
+            text(&q.facts, "customer_kind").to_owned(),
+            text(&q.facts, "customer_code").to_owned(),
+        ),
+        None => (
+            required(v, "customer_kind", 20)?,
+            required(v, "customer_code", 255)?,
+        ),
     };
     if !["company", "person"].contains(&customer_kind.as_str()) {
         return Err(invalid("customer_kind", "Choose Company or Person."));
