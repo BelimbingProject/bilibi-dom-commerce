@@ -23,14 +23,14 @@ macro_rules! provenance {
     };
 }
 inventory::submit! {Module{id:MODULE,layer:Layer::Domains,
-dependencies:&["base/agent_api","base/authz","base/database","base/datetime","base/events","base/menu","base/records","base/tenancy","base/ui","core/company"],
+dependencies:&["base/agent_api","base/authz","base/database","base/datetime","base/events","base/grid","base/locale","base/menu","base/records","base/tenancy","base/ui","core/company"],
 migrations:&[("commerce-sales-001-sales",include_str!("../migrations/001-sales.sql"))],
 services:&[
 Service{id:SERVICE,factory:|services|{
 crate::operations::bind(services.get::<Events>(bilibi_events::SERVICE)?,services.get(bilibi_records::SERVICE)?,services.get("base/tenancy.parties")?)?;
 Ok(Arc::new(Sales::new(services.get::<Db>("base/database.pool")?.as_ref().clone())))
 }},
-Service{id:PAGES,factory:|services|Ok(Arc::new(PageService::<Scope,bilibi_database::Error>(Arc::new(crate::web::Pages::new(services.get::<Sales>(SERVICE)?,services.get(bilibi_agent_api::page::SERVICE)?)))))},
+Service{id:PAGES,factory:|services|Ok(Arc::new(PageService::<Scope,bilibi_database::Error>(Arc::new(crate::web::Pages::new(services.get::<Sales>(SERVICE)?,services.get(bilibi_agent_api::page::SERVICE)?,services.get(bilibi_grid::PAGE_VIEWS)?,services.get("base/datetime.display")?,services.get("base/locale.locales")?)))))},
 ]}}
 inventory::submit! {Contribution::new(VOCABULARY,"commerce/sales.vocabulary",provenance!(),&VocabularyContribution{
 domains:&["commerce"],verbs:&["confirm"],capabilities:&[C::tenant(VIEW),C::tenant(MANAGE),C::tenant(CONFIRM)],roles:&[RoleDefinition{code:"tenant_owner",name:"Tenant Owner",description:"Contributed system role; reconciled explicitly",grant_all:false,capabilities:&[VIEW,MANAGE,CONFIRM]}],system_principals:&[]})}

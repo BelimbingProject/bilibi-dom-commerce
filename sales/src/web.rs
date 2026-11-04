@@ -2,6 +2,8 @@ use crate::{contributions::PAGES, prepare::text, Record, Sales, CONFIRM, MANAGE,
 use askama::Template;
 use bilibi_agent_api::page::{Call, PageContracts};
 use bilibi_database::{Error, Result};
+use bilibi_datetime::{DisplayContext, DisplayPolicy, Format, Precision};
+use bilibi_grid::{PageColumns, PageViews};
 use bilibi_tenancy::Scope;
 use bilibi_ui::{
     page::{
@@ -19,10 +21,25 @@ use std::{
 pub(crate) struct Pages {
     sales: Arc<Sales>,
     contracts: Arc<PageContracts>,
+    views: Arc<PageViews>,
+    display: Arc<DisplayPolicy>,
+    locales: Arc<bilibi_locale::Locales>,
 }
 impl Pages {
-    pub fn new(sales: Arc<Sales>, contracts: Arc<PageContracts>) -> Self {
-        Self { sales, contracts }
+    pub fn new(
+        sales: Arc<Sales>,
+        contracts: Arc<PageContracts>,
+        views: Arc<PageViews>,
+        display: Arc<DisplayPolicy>,
+        locales: Arc<bilibi_locale::Locales>,
+    ) -> Self {
+        Self {
+            sales,
+            contracts,
+            views,
+            display,
+            locales,
+        }
     }
 }
 fn title(k: &str) -> &'static str {
@@ -106,11 +123,15 @@ struct State {
     id: Option<i64>,
     framed: bool,
     list: ListState,
-    columns: ListColumns,
+    columns: PageColumns,
+    display_policy: Arc<DisplayPolicy>,
+    locales: Arc<bilibi_locale::Locales>,
+    display: DisplayContext,
+    column_params: HashMap<String, String>,
+    columns_open: bool,
     rows: Vec<Record>,
     record: Option<Record>,
     history: Vec<Value>,
-    items: Vec<Record>,
     manage: bool,
     confirm: bool,
     editing: bool,
@@ -156,17 +177,22 @@ impl State {
             id,
             framed,
             list: list(q)?,
-            columns: ListColumns::mount(
-                "commerce-table",
+            columns: PageColumns::mount(
+                p.views.clone(),
+                &format!("commerce-{k}"),
                 cols.into_iter()
                     .map(|(k, l)| BuiltinColumn::new(k, l))
                     .collect(),
             )
             .map_err(|_| Error::Internal)?,
+            display_policy: p.display.clone(),
+            locales: p.locales.clone(),
+            display: DisplayContext::anonymous(),
+            column_params: q.clone(),
+            columns_open: false,
             rows: vec![],
             record: None,
             history: vec![],
-            items: vec![],
             manage: false,
             confirm: false,
             editing: false,
@@ -202,7 +228,13 @@ impl State {
         crate::authorize(&**c, s, company, VIEW).await?;
         self.manage = crate::authorize(&**c, s, company, MANAGE).await.is_ok();
         self.confirm = crate::authorize(&**c, s, company, CONFIRM).await.is_ok();
+        let locale = self.locales.resolve(&**c, s, None).await?.locale;
+        self.display = self.display_policy.display(&**c, s, None, locale).await?;
         drop(c);
+        if !self.columns_open {
+            self.columns.from_params(s, &self.column_params).await?;
+            self.columns_open = true;
+        }
         if let Some(id) = self.id {
             self.record = Some(self.sales.get(s, company, self.kind, id).await?);
             if self.kind != "item" {
@@ -232,10 +264,13 @@ impl State {
                 status,
             )
             .await? as u64;
-            self.columns.load(&self.rows, |r| r.id.to_string());
-        }
-        if self.manage && self.kind != "item" {
-            self.items = self.sales.list(s, company, "item", "", "", 100, 0).await?;
+            self.columns
+                .load(
+                    s,
+                    &self.rows.iter().map(|r| json!(r.id)).collect::<Vec<_>>(),
+                    &self.display,
+                )
+                .await?;
         }
         Ok(())
     }
@@ -278,7 +313,7 @@ impl State {
             );
         }
         if self.kind == "order" {
-            fields.push(self.field("quotation_id","Accepted quotation ID").hint("Leave blank to enter an order directly. A quotation replaces the customer and lines entered below."));
+            fields.push(self.field("quotation_number","Accepted quotation number").hint("Leave blank to enter an order directly. A quotation replaces the customer and lines entered below."));
         }
         fields
     }
@@ -286,21 +321,8 @@ impl State {
         (0..self.line_count)
             .map(|i| {
                 let mut fields = vec![self
-                    .field(&format!("line_{i}_item_id"), "Product")
-                    .kind(InputKind::Select)
-                    .prompt("Typed line")
-                    .options(
-                        self.items
-                            .iter()
-                            .filter(|r| r.facts["active"] != false)
-                            .map(|r| {
-                                Choice::new(
-                                    format!("{} · {}", r.code, text(&r.facts, "name")),
-                                    r.id.to_string(),
-                                )
-                            })
-                            .collect(),
-                    )];
+                    .field(&format!("line_{i}_item_code"), "Product code")
+                    .hint("Leave blank to enter a typed line.")];
                 for (k, l) in [
                     ("description", "Description"),
                     ("quantity", "Quantity"),
@@ -323,8 +345,8 @@ impl State {
             }
         }
         if self.kind == "order" {
-            if let Some(q) = self.form.get("quotation_id").filter(|s| !s.is_empty()) {
-                v["quotation_id"] = json!(q.parse::<i64>().unwrap_or(0));
+            if let Some(q) = self.form.get("quotation_number").filter(|s| !s.is_empty()) {
+                v["quotation_number"] = json!(q.parse::<i64>().unwrap_or(0));
             }
         }
         if self.kind != "item" {
@@ -345,15 +367,15 @@ impl State {
                             .cloned()
                             .unwrap_or_default());
                     }
-                    if let Some(item) = self
+                    if let Some(code) = self
                         .form
-                        .get(&format!("line_{i}_item_id"))
+                        .get(&format!("line_{i}_item_code"))
                         .filter(|s| !s.is_empty())
                     {
-                        line["item_id"] = json!(item.parse::<i64>().unwrap_or(0));
+                        line["item_code"] = json!(code);
                     }
                     if text(&line, "description").is_empty()
-                        && line["item_id"].is_null()
+                        && line["item_code"].is_null()
                         && text(&line, "quantity").is_empty()
                     {
                         None
@@ -412,7 +434,9 @@ impl State {
             "filters" => self.list.apply_filters(&params::form_values(v, "filters")),
             "page" => self.list.put_page(Some(text(v, "page"))),
             "grid" => {
-                self.columns.handle(&params::string_values(v));
+                self.columns
+                    .handle(r.scope, &params::string_values(v))
+                    .await?;
             }
             "clear-flash" => self.flash = None,
             "new" => {
@@ -629,7 +653,31 @@ impl State {
             }
             if !self.history.is_empty() {
                 history = render(&History {
-                    rows: &self.history,
+                    rows: self
+                        .history
+                        .iter()
+                        .map(|h| {
+                            let at = text(h, "at")
+                                .parse::<jiff::Timestamp>()
+                                .map(|at| {
+                                    self.display
+                                        .render(at, Format::DateTime, Precision::Second)
+                                        .text
+                                })
+                                .unwrap_or_default();
+                            HistoryRow {
+                                at,
+                                from: text(h, "from").into(),
+                                to: text(h, "to").into(),
+                                user: h["user_id"].to_string(),
+                                impersonator: h["impersonator_id"]
+                                    .as_i64()
+                                    .map(|i| i.to_string())
+                                    .unwrap_or_default(),
+                                reason: text(h, "reason").into(),
+                            }
+                        })
+                        .collect(),
                 })?;
             }
         } else {
@@ -669,11 +717,9 @@ impl State {
                     Ok(row)
                 })
                 .collect::<Result<Vec<_>>>()?;
-            let mut table = FlexTable::new("commerce-table", self.columns.flex_columns(), rows);
+            let mut table = self.columns.flex_table("commerce-table", rows);
             table.event = "grid";
-            table.zoom = self.columns.zoom;
-            table.suggestions = self.columns.flex_suggestions();
-            table.add_query = &self.columns.add_query;
+
             table.caption = title(self.kind);
             table.framed = false;
             if self.rows.is_empty() {
@@ -815,14 +861,22 @@ impl LiveState<Scope, Error> for State {
     fn update<'a>(&'a mut self, r: LiveRequest<'a, Scope>) -> LiveFuture<'a, Error> {
         Box::pin(async move {
             match &r.input {
-                LiveInput::Params(q) => self.list = list(q)?,
+                LiveInput::Params(q) => {
+                    self.list = list(q)?;
+                    self.column_params = (*q).clone();
+                    self.columns_open = false;
+                }
                 LiveInput::Event(v) => self.event(&r, v).await?,
                 _ => {}
             }
             self.load(r.scope).await?;
             Ok(LiveBody {
                 html: self.view()?.to_string(),
-                query: self.list.to_params(),
+                query: {
+                    let mut q = self.list.to_params();
+                    q.extend(self.columns.params());
+                    q
+                },
                 redirect: self.redirect.take(),
                 rows: self.rows.len(),
                 ..LiveBody::default()
@@ -860,8 +914,16 @@ struct View<'a> {
 }
 #[derive(Template)]
 #[template(path = "history.html")]
-struct History<'a> {
-    rows: &'a [Value],
+struct History {
+    rows: Vec<HistoryRow>,
+}
+struct HistoryRow {
+    at: String,
+    from: String,
+    to: String,
+    user: String,
+    impersonator: String,
+    reason: String,
 }
 
 fn posted(v: &Value) -> HashMap<String, String> {

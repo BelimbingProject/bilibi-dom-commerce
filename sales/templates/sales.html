@@ -31,7 +31,7 @@
 {% if kind != "item" %}
 {% for row in lines %}
 {% let heading_id = "line-heading-{}"|format(loop.index) %}{% let line_heading = "Line {}"|format(loop.index) %}
-{% call forms::section(labelledby=heading_id,heading=line_heading,description="Choose a product and quantity, or enter all line details. Product lines use the catalog price, unit and tax.") %}
+{% call forms::section(labelledby=heading_id,heading=line_heading,description="Enter a product code and quantity, or enter all line details. Product lines use the catalog price, unit and tax.") %}
 {% call forms::field_row(fields=row) %}{% endcall %}
 {% endcall %}
 {% endfor %}

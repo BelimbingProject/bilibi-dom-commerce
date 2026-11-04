@@ -164,8 +164,15 @@ pub(crate) async fn prepare(
         p.target = to;
         return Ok(p);
     }
-    if kind == "order" && v["quotation_id"].as_i64().is_some() {
-        let id = integer(v, "quotation_id")?;
+    if kind == "order"
+        && (v["quotation_id"].as_i64().is_some() || v["quotation_number"].as_i64().is_some())
+    {
+        let id = if v["quotation_id"].as_i64().is_some() {
+            integer(v, "quotation_id")?
+        } else {
+            let number = integer(v, "quotation_number")?;
+            c.query_opt("SELECT id FROM commerce_sales_documents WHERE tenant_id=$1 AND company_id=$2 AND kind='quotation' AND number=$3",&[&scope.tenant(),&co,&number]).await?.ok_or_else(||invalid("quotation_number","That quotation is not available."))?.try_get(0)?
+        };
         let quote = store::get(c, scope.tenant(), co, "quotation", id)
             .await?
             .ok_or(Error::NotFound)?;
@@ -226,7 +233,13 @@ pub(crate) async fn prepare(
     for (i, line) in input.iter().enumerate() {
         let mut source = line.clone();
         let mut item_code = Value::Null;
-        if let Some(id) = line["item_id"].as_i64() {
+        let catalog_id = if !text(line, "item_code").is_empty() {
+            let code = required(line, "item_code", 50)?;
+            Some(c.query_opt("SELECT id FROM commerce_sales_items WHERE tenant_id=$1 AND company_id=$2 AND code=$3",&[&scope.tenant(),&co,&code]).await?.ok_or_else(||invalid("lines","That product code is not available."))?.try_get::<_,i64>(0)?)
+        } else {
+            line["item_id"].as_i64()
+        };
+        if let Some(id) = catalog_id {
             let item = store::get(c, scope.tenant(), co, "item", id)
                 .await?
                 .ok_or_else(|| invalid("lines", "A catalog item is no longer available."))?;
@@ -253,7 +266,7 @@ pub(crate) async fn prepare(
         let tax = money(net * rate / Decimal::from(100));
         subtotal += net;
         tax_total += tax;
-        lines.push(json!({"line_number":i+1,"item_id":line["item_id"],"item_code":item_code,"description":required(&source,"description",500)?,"unit":required(&source,"unit",20)?,"quantity":quantity.to_string(),"unit_price":price.to_string(),"tax_code":required(&source,"tax_code",50)?,"tax_rate":rate.to_string(),"subtotal":net.to_string(),"tax_total":tax.to_string(),"total":(net+tax).to_string()}));
+        lines.push(json!({"line_number":i+1,"item_id":catalog_id,"item_code":item_code,"description":required(&source,"description",500)?,"unit":required(&source,"unit",20)?,"quantity":quantity.to_string(),"unit_price":price.to_string(),"tax_code":required(&source,"tax_code",50)?,"tax_rate":rate.to_string(),"subtotal":net.to_string(),"tax_total":tax.to_string(),"total":(net+tax).to_string()}));
     }
     let valid_until = if kind == "quotation" {
         let d = date(v, "valid_until")?;

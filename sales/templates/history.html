@@ -1,6 +1,6 @@
 {% import "components.html" as ui %}
 {% call ui::card(id="commerce-history",title="Status history") %}
 {% call ui::facts() %}{% for row in rows %}
-{% call ui::fact(title="Status change") %}{{ row["at"] }} · {{ row["from"] }} → {{ row["to"] }} · Account {{ row["user_id"] }}{% if !row["impersonator_id"].is_null() %} · Impersonated by {{ row["impersonator_id"] }}{% endif %} · {{ row["reason"] }}{% endcall %}
+{% call ui::fact(title="Status change") %}{{ row.at }} · {{ row.from }} → {{ row.to }} · Account {{ row.user }}{% if !row.impersonator.is_empty() %} · Impersonated by {{ row.impersonator }}{% endif %} · {{ row.reason }}{% endcall %}
 {% endfor %}{% endcall %}
 {% endcall %}
