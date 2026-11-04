@@ -9,8 +9,8 @@
 {% call ui::header() %}{{ heading }}{% endcall %}
 {% if is_detail %}
 {% call ui::back_link(href=back) %}{% endcall %}
-{% if kind == "delivery" %}{% let pdf_url = "/commerce/delivery-orders/{}/pdf"|format(record_id) %}{% call ui::action_link(href=pdf_url) %}Print delivery order{% endcall %}{% endif %}
-{% if manage && !delivery_link.is_empty() %}{% call ui::action_link(href=delivery_link) %}+ Delivery order{% endcall %}{% endif %}
+{% if kind == "delivery" %}{% let pdf_url = "/commerce/delivery-orders/{}/pdf"|format(record_id) %}{% call ui::action_link(id="delivery-print",icon="",title="Print delivery order",href=pdf_url) %}Print delivery order{% endcall %}{% endif %}
+{% if manage && !delivery_link.is_empty() %}{% call ui::action_link(id="order-delivery",icon="",title="Create a delivery order",href=delivery_link) %}+ Delivery order{% endcall %}{% endif %}
 {% call ui::card(id="commerce-record",title="Details") %}{{ detail }}{% endcall %}
 {% if kind != "item" %}{% call ui::card(id="commerce-lines",title="Lines") %}{{ body }}{% endcall %}{% endif %}
 {% if actions %}
