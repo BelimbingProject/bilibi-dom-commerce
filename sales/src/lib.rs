@@ -1,8 +1,10 @@
 //! Commerce sales: catalog items, quotations and sales orders. All writes use
 //! the reviewed contracts in operations; pages and agents share that door.
 mod contributions;
+mod delivery;
 mod operations;
 mod prepare;
+mod print;
 mod store;
 mod web;
 
@@ -73,9 +75,13 @@ impl Sales {
     pub async fn get(&self, scope: &Scope, company: i64, kind: &str, id: i64) -> Result<Record> {
         let client = self.db.get().await?;
         authorize(&**client, scope, company, VIEW).await?;
-        store::get(&**client, scope.tenant(), company, kind, id)
+        let mut record = store::get(&**client, scope.tenant(), company, kind, id)
             .await?
-            .ok_or(Error::NotFound)
+            .ok_or(Error::NotFound)?;
+        if kind == "order" {
+            delivery::progress(&**client, scope, company, &mut record).await?;
+        }
+        Ok(record)
     }
     pub async fn history(&self, scope: &Scope, company: i64, id: i64) -> Result<Vec<Value>> {
         let client = self.db.get().await?;
