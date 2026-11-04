@@ -14,6 +14,7 @@ bilibi-party-ids.workspace = true
 bilibi-authz.workspace = true
 bilibi-company.workspace = true
 bilibi-currency.workspace = true
+bilibi-product.workspace = true
 bilibi-database.workspace = true
 bilibi-datetime.workspace = true
 bilibi-events.workspace = true

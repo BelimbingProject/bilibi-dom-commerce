@@ -1,6 +1,6 @@
 # Sales contracts
 
-The `commerce/sales` module owns catalog items, quotations, sales orders, delivery orders and their status history.
+The `commerce/sales` module owns quotations, sales orders, delivery orders and their status history.
 
 ## Writes
 
@@ -8,8 +8,6 @@ Browser actions and agents call the same registered safe-write operations. The b
 
 | Operation | Required facts beyond `company_id` |
 | --- | --- |
-| `commerce.sales.item.create` | `code`, `name`, `unit`, `default_price`, `currency_code`, `tax_code`, `tax_rate` |
-| `commerce.sales.item.update` | `id`, current `revision`, `name`, `unit`, `default_price`, `currency_code`, `tax_code`, `tax_rate`; optional `active` |
 | `commerce.sales.quotation.create` | `customer_kind`, `customer_code`, `currency_code`, `valid_until`, `lines`; optional `reference` |
 | `commerce.sales.quotation.transition` | `id`, current `revision`, `status`; `reason` for rejection |
 | `commerce.sales.order.create` | Either `quotation_id` (or `quotation_number`, not both) or the same customer, currency and lines as a quotation; no expiry required. With a quotation, the customer and lines come from it and are checked again, so supplying `customer_code` or `lines` is refused. `reference` is kept on the order. `currency_code` and `customer_kind` are optional and refused only when they differ from the quotation |
@@ -17,9 +15,9 @@ Browser actions and agents call the same registered safe-write operations. The b
 | `commerce.sales.delivery.create` | `order_id` or `order_number` (not both); optional `reference` and `lines` with `order_line_number` and decimal `quantity`. Omit `lines` to deliver all available quantities |
 | `commerce.sales.delivery.transition` | `id`, current `revision`, `status` (`shipped`, `delivered` or `cancelled`); `reason` for cancellation |
 
-`customer_kind` is `company` or `person`. These are Core record kinds, with the same meaning as Finance receivables. A typed line has `description`, `quantity`, `unit`, `unit_price`, `tax_code` and `tax_rate`. A catalog line instead has `item_id` or `item_code`, and `quantity`. The stored line includes all resolved facts, its 1-based `line_number`, and subtotal, tax and total.
+`customer_kind` is `company` or `person`. These are Core record kinds, with the same meaning as Finance receivables. A typed line has `description`, `quantity`, `unit`, `unit_price`, `tax_code` and `tax_rate`. A product line has a Core `product_id`, `quantity`, `tax_code` and `tax_rate`. Core supplies description, base unit and selling price; tax is a transaction fact. `price_on` selects the latest Core price on or before that date for the exact selling company and document currency, defaulting to today (UTC). A missing price refuses the save; zero is valid only when Core stores zero. New selections and saves call Records with kind `product`, so retired or inaccessible products are refused. The stored line includes all resolved facts, its 1-based `line_number`, and subtotal, tax and total.
 
-Quantities, prices and rates are exact decimal strings with at most four decimal places and values at most 999,999,999. Quantities must be positive; prices and tax may be zero. Rates are percentages from 0 to 100. A document has 1–100 lines. Core Currency supplies the enabled currencies and their decimal places: JPY uses zero and KWD uses three. Catalog default prices, line unit prices, subtotals, tax and totals round half away from zero to those places. Document totals add the rounded line amounts. A catalog item must use the document currency; Commerce performs no conversion. New assignments check Core Currency on the write transaction. Existing snapshots remain readable after a currency is disabled.
+Quantities, prices and rates are exact decimal strings with at most four decimal places and values at most 999,999,999. Quantities must be positive; prices and tax may be zero. Rates are percentages from 0 to 100. A document has 1–100 lines. Core Currency supplies the enabled currencies and their decimal places: JPY uses zero and KWD uses three. Line unit prices, subtotals, tax and totals round half away from zero to those places. Document totals add the rounded line amounts. Core prices must match the selling company and document currency; Commerce performs no conversion. New assignments check Core Currency on the write transaction. Existing snapshots remain readable after a currency is disabled.
 
 Quotations move `draft → sent → accepted | rejected | expired`. Sales orders move `draft → confirmed → cancelled`, and drafts may be cancelled. A status change requires the current revision, so stale browser or agent actions are refused. Status history records creation and each transition with account, impersonator, reason and UTC instant. History and document facts are protected against changes and deletion by database triggers.
 
@@ -39,7 +37,7 @@ The sales order record shows delivered, remaining and available quantities per l
 
 ## Record references
 
-Other modules can refer to `commerce.sales.item`, `commerce.sales.quotation` and `commerce.sales.order` through Base Records, using the record ID as text. Names and links come from the matching Grid declaration. Each owner checks the tenant, document kind, company desk access and `commerce.sales.view` before revealing a record. Delivery orders are not yet present in this checkout; register their kind when that module lands.
+Other modules can refer to `commerce.sales.quotation`, `commerce.sales.order` and `commerce.sales.delivery` through Base Records, using the record ID as text. Names and links come from the matching Grid declaration. Each owner checks the tenant, document kind, company desk access and `commerce.sales.view` before revealing a record. Core owns the `product` kind and its single Products list and page. Commerce has no product master, product operations or additional product panel; current delivery quantities belong to documents and need no product-level facts.
 
 ## Events for invoice consumers
 
@@ -72,8 +70,8 @@ Each event carries one line per part to stay within the Base event payload limit
   "part_count": 1,
   "lines": [{
     "line_number": 1,
-    "item_id": null,
-    "item_code": null,
+    "product_id": null,
+    "product_code": null,
     "description": "Service",
     "quantity": "1",
     "unit": "hour",
@@ -89,7 +87,7 @@ Each event carries one line per part to stay within the Base event payload limit
 
 The example uses arbitrary company data, not built-in defaults. Consumers keep their own types and copy the parts they need. Deduplicate by event identity, collect every part for an order revision, and reconcile later cancellation from the status event. Do not create an invoice once per part. The Finance consumer is outside this slice.
 
-The delivered event is recorded on the same audited transaction as the delivered status and history. It uses subject `delivery:<id>` and key `delivery:<id>:revision:<revision>:delivered:line:<part_index>`. Each part contains `company_id`, `delivery_id`, `delivery_number`, delivery `revision`, `status`, `order_id`, `order_number`, `order_revision`, `customer_kind`, `customer_id`, `customer_code`, `reference`, `part_index`, `part_count` and one line in `lines`. Each line contains `line_number`, `order_line_number`, `item_id`, `item_code`, `description`, `unit`, `ordered_quantity` and delivered `quantity`. Base supplies the version, actor and event instant. Consumers deduplicate event identity and collect every part for the delivery revision. A delivered delivery cannot be cancelled, so there is no reversal event in this slice.
+The delivered event is recorded on the same audited transaction as the delivered status and history. It uses subject `delivery:<id>` and key `delivery:<id>:revision:<revision>:delivered:line:<part_index>`. Each part contains `company_id`, `delivery_id`, `delivery_number`, delivery `revision`, `status`, `order_id`, `order_number`, `order_revision`, `customer_kind`, `customer_id`, `customer_code`, `reference`, `part_index`, `part_count` and one line in `lines`. Each line contains `line_number`, `order_line_number`, `product_id`, `product_code`, `description`, `unit`, `ordered_quantity` and delivered `quantity`. Base supplies the version, actor and event instant. Consumers deduplicate event identity and collect every part for the delivery revision. A delivered delivery cannot be cancelled, so there is no reversal event in this slice.
 
 ## Where to go next
 

@@ -6,7 +6,7 @@ use bilibi_records::{Access, RecordKind, RecordOwner};
 use bilibi_tenancy::{ProofClient, ProofFuture, Scope};
 
 struct Owner(&'static str);
-static ITEM: Owner = Owner("item");
+static DELIVERY: Owner = Owner("delivery");
 static QUOTATION: Owner = Owner("quotation");
 static ORDER: Owner = Owner("order");
 impl RecordOwner for Owner {
@@ -20,16 +20,7 @@ impl RecordOwner for Owner {
             let Some(id) = id.parse::<i64>().ok().filter(|id| *id > 0) else {
                 return Ok(Access::NotFound);
             };
-            let row = if self.0 == "item" {
-                client
-                    .query_opt(
-                        "SELECT company_id FROM commerce_sales_items WHERE tenant_id=$1 AND id=$2",
-                        &[&scope.tenant(), &id],
-                    )
-                    .await?
-            } else {
-                client.query_opt("SELECT company_id FROM commerce_sales_documents WHERE tenant_id=$1 AND id=$2 AND kind=$3", &[&scope.tenant(), &id, &self.0]).await?
-            };
+            let row = client.query_opt("SELECT company_id FROM commerce_sales_documents WHERE tenant_id=$1 AND id=$2 AND kind=$3", &[&scope.tenant(), &id, &self.0]).await?;
             let Some(row) = row else {
                 return Ok(Access::NotFound);
             };
@@ -51,8 +42,12 @@ impl RecordOwner for Owner {
 }
 bilibi_records::declare!(
     "commerce/sales",
-    RecordKind::new("commerce.sales.item", "commerce_sales_items", &ITEM)
-        .page("/commerce/items/{id}")
+    RecordKind::new(
+        "commerce.sales.delivery",
+        "commerce_sales_deliveries",
+        &DELIVERY
+    )
+    .page("/commerce/delivery-orders/{id}")
 );
 bilibi_records::declare!(
     "commerce/sales",
@@ -77,9 +72,9 @@ const FIELDS: &[Field] = &[
 ];
 static GRID: GridContribution = GridContribution {
     tables: &[
-        TableDecl::new("commerce_sales_items", "Products", VIEW, Source::tenant("SELECT id, code FROM commerce_sales_items WHERE tenant_id=$1 AND company_id IN (SELECT d.company_id FROM user_desks d JOIN users u ON u.tenant_id=d.tenant_id AND u.person_id=d.person_id AND u.kind='staff' AND u.deleted_at IS NULL WHERE d.tenant_id=$1 AND u.id=$2)"), "id", FIELDS).label_field("code").record_types(&["commerce.sales.item"]),
         TableDecl::new("commerce_sales_quotations", "Quotations", VIEW, Source::tenant("SELECT id, number::text AS code FROM commerce_sales_documents WHERE tenant_id=$1 AND kind='quotation' AND company_id IN (SELECT d.company_id FROM user_desks d JOIN users u ON u.tenant_id=d.tenant_id AND u.person_id=d.person_id AND u.kind='staff' AND u.deleted_at IS NULL WHERE d.tenant_id=$1 AND u.id=$2)"), "id", FIELDS).label_field("code").record_types(&["commerce.sales.quotation"]),
         TableDecl::new("commerce_sales_orders", "Sales orders", VIEW, Source::tenant("SELECT id, number::text AS code FROM commerce_sales_documents WHERE tenant_id=$1 AND kind='order' AND company_id IN (SELECT d.company_id FROM user_desks d JOIN users u ON u.tenant_id=d.tenant_id AND u.person_id=d.person_id AND u.kind='staff' AND u.deleted_at IS NULL WHERE d.tenant_id=$1 AND u.id=$2)"), "id", FIELDS).label_field("code").record_types(&["commerce.sales.order"]),
+        TableDecl::new("commerce_sales_deliveries", "Delivery orders", VIEW, Source::tenant("SELECT id, number::text AS code FROM commerce_sales_documents WHERE tenant_id=$1 AND kind='delivery' AND company_id IN (SELECT d.company_id FROM user_desks d JOIN users u ON u.tenant_id=d.tenant_id AND u.person_id=d.person_id AND u.kind='staff' AND u.deleted_at IS NULL WHERE d.tenant_id=$1 AND u.id=$2)"), "id", FIELDS).label_field("code").record_types(&["commerce.sales.delivery"]),
     ],
     record_fields: &[],
     links: &[]

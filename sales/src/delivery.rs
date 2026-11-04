@@ -1,13 +1,14 @@
 //! Delivery quantities are reserved from draft onward. All callers hold the
 //! company write lock before preparing a delivery or changing its source order.
 use crate::{
-    prepare::{decimal, integer, invalid, required, text, Prepared},
-    store, Record,
+    Record,
+    prepare::{Prepared, decimal, integer, invalid, required, text},
+    store,
 };
 use bilibi_agent_api::{Error, OperationClient, Result};
 use bilibi_tenancy::Scope;
 use rust_decimal::Decimal;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::{
     collections::{BTreeMap, BTreeSet},
     str::FromStr,
@@ -164,7 +165,7 @@ pub(crate) async fn prepare(
                 &format!("Order line {n} has {available} available for delivery."),
             ));
         }
-        lines.push(json!({"line_number":lines.len()+1,"order_line_number":n,"item_id":original["item_id"],"item_code":original["item_code"],"description":original["description"],"unit":original["unit"],"ordered_quantity":original["quantity"],"quantity":quantity.to_string()}));
+        lines.push(json!({"line_number":lines.len()+1,"order_line_number":n,"product_id":original["product_id"],"product_code":original["product_code"],"description":original["description"],"unit":original["unit"],"ordered_quantity":original["quantity"],"quantity":quantity.to_string()}));
     }
     p.facts = json!({"order_id":order.id,"order_number":order.code,"order_revision":order.revision,"customer_kind":order.facts["customer_kind"],"customer_id":order.facts["customer_id"],"customer_code":order.facts["customer_code"],"reference":text(v,"reference"),"lines":lines});
     if text(v, "reference").chars().count() > 200 {

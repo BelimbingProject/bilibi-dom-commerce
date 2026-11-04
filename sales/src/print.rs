@@ -6,7 +6,7 @@ use bilibi_database::{Error, Result};
 use bilibi_party_ids::OrganisationId;
 use bilibi_tenancy::{ProofClient, ProofFuture, Scope};
 use bilibi_ui::download::{Download, DownloadFuture, DownloadRequest, FileBody};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::sync::Arc;
 pub(crate) const SERVICE: &str = "commerce/sales.delivery-print";
 pub(crate) struct DeliveryPrint {

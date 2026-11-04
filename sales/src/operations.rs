@@ -1,14 +1,14 @@
-use crate::{prepare, store, CONFIRM, MANAGE, MODULE};
+use crate::{CONFIRM, MANAGE, MODULE, prepare, store};
 use bilibi_agent_api::{
-    Channels, Definitions, Error, Handler, Operation, OperationClient, OperationFuture,
-    WriteHandler, DEFINITIONS,
+    Channels, DEFINITIONS, Definitions, Error, Handler, Operation, OperationClient,
+    OperationFuture, WriteHandler,
 };
 use bilibi_database::MutationTransaction;
 use bilibi_events::{Events, NewEvent};
 use bilibi_module_registry::{Contribution, Provenance};
 use bilibi_records::Records;
 use bilibi_tenancy::{PartyProofs, Scope};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::sync::{Arc, OnceLock};
 
 pub(crate) const DELIVERED: &str = "commerce/sales.delivery_delivered";
@@ -19,6 +19,7 @@ struct Services {
     records: Arc<Records>,
     parties: Arc<PartyProofs>,
     currencies: Arc<bilibi_currency::Currencies>,
+    products: Arc<bilibi_product::Products>,
 }
 static SERVICES: OnceLock<Services> = OnceLock::new();
 pub(crate) fn bind(
@@ -26,6 +27,7 @@ pub(crate) fn bind(
     records: Arc<Records>,
     parties: Arc<PartyProofs>,
     currencies: Arc<bilibi_currency::Currencies>,
+    products: Arc<bilibi_product::Products>,
 ) -> bilibi_module_registry::Result<()> {
     SERVICES
         .set(Services {
@@ -33,6 +35,7 @@ pub(crate) fn bind(
             records,
             parties,
             currencies,
+            products,
         })
         .map_err(|_| {
             bilibi_module_registry::RegistryError::Service("duplicate commerce binding".into())
@@ -70,6 +73,7 @@ impl Write {
             &services.records,
             &services.parties,
             &services.currencies,
+            &services.products,
             tx,
         )
         .await
@@ -201,67 +205,20 @@ fn schema(action: &str) -> Value {
             "company_id":{"type":"integer","minimum":1},"id":{"type":"integer","minimum":1},"revision":{"type":"integer","minimum":1},"status":{"type":"string","enum":["shipped","delivered","cancelled"]},"reason":{"type":"string","maxLength":500}
         }});
     }
-    let line = json!({"type":"object","properties":{"item_id":{"type":"integer","minimum":1},"item_code":{"type":"string","maxLength":50},"description":{"type":"string","maxLength":500},"quantity":{"type":"string","maxLength":30},"unit":{"type":"string","maxLength":20},"unit_price":{"type":"string","maxLength":30},"tax_code":{"type":"string","maxLength":50},"tax_rate":{"type":"string","maxLength":30}}});
+    let line = json!({"type":"object","properties":{"product_id":{"type":"integer","minimum":1},"description":{"type":"string","maxLength":500},"quantity":{"type":"string","maxLength":30},"unit":{"type":"string","maxLength":20},"unit_price":{"type":"string","maxLength":30},"tax_code":{"type":"string","maxLength":50},"tax_rate":{"type":"string","maxLength":30}}});
     let mut schema = json!({"type":"object","required":["company_id"],"properties":{
  "company_id":{"type":"integer","minimum":1},"id":{"type":"integer","minimum":1},"revision":{"type":"integer","minimum":1},
- "code":{"type":"string","maxLength":50},"name":{"type":"string","maxLength":200},"unit":{"type":"string","maxLength":20},"default_price":{"type":"string","maxLength":30},"tax_code":{"type":"string","maxLength":50},"tax_rate":{"type":"string","maxLength":30},"active":{"type":"boolean"},
+ "price_on":{"type":"string","maxLength":10},
  "customer_kind":{"type":"string","enum":["company","person"]},"customer_code":{"type":"string","maxLength":255},"currency_code":{"type":"string","maxLength":3},"valid_until":{"type":"string","maxLength":10},"reference":{"type":"string","maxLength":200},"quotation_id":{"type":"integer","minimum":1},"quotation_number":{"type":"integer","minimum":1},"status":{"type":"string","enum":["sent","accepted","rejected","expired","confirmed","cancelled"]},"reason":{"type":"string","maxLength":500},
  "lines":{"type":"array","items":line}}});
     let (allowed, required): (&[&str], &[&str]) = match action {
-        "item.create" => (
-            &[
-                "company_id",
-                "code",
-                "name",
-                "unit",
-                "default_price",
-                "currency_code",
-                "tax_code",
-                "tax_rate",
-                "active",
-            ],
-            &[
-                "company_id",
-                "code",
-                "name",
-                "unit",
-                "default_price",
-                "currency_code",
-                "tax_code",
-                "tax_rate",
-            ],
-        ),
-        "item.update" => (
-            &[
-                "company_id",
-                "id",
-                "revision",
-                "name",
-                "unit",
-                "default_price",
-                "currency_code",
-                "tax_code",
-                "tax_rate",
-                "active",
-            ],
-            &[
-                "company_id",
-                "id",
-                "revision",
-                "name",
-                "unit",
-                "default_price",
-                "currency_code",
-                "tax_code",
-                "tax_rate",
-            ],
-        ),
         "quotation.create" => (
             &[
                 "company_id",
                 "customer_kind",
                 "customer_code",
                 "currency_code",
+                "price_on",
                 "valid_until",
                 "reference",
                 "lines",
@@ -281,6 +238,7 @@ fn schema(action: &str) -> Value {
                 "customer_kind",
                 "customer_code",
                 "currency_code",
+                "price_on",
                 "reference",
                 "lines",
                 "quotation_id",
@@ -311,8 +269,6 @@ inventory::submit! {Contribution::new(DEFINITIONS,"commerce/sales.operations",Pr
 operations:&[
 op!("commerce.sales.delivery.create","Create a delivery order","delivery.create"),
 op!("commerce.sales.delivery.transition","Ship, deliver or cancel a delivery order","delivery.transition"),
-op!("commerce.sales.item.create","Create a catalog item","item.create"),
-op!("commerce.sales.item.update","Update a catalog item","item.update"),
 op!("commerce.sales.quotation.create","Create a quotation","quotation.create"),
 op!("commerce.sales.quotation.transition","Change quotation status","quotation.transition"),
 op!("commerce.sales.order.create","Create a sales order","order.create"),

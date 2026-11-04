@@ -1,11 +1,11 @@
 //! All business validation and exact arithmetic live here, shared by preview
-//! and commit. Catalog references resolve under the company lock.
-use crate::{store, Record};
+//! and commit. Product references resolve under the company lock.
+use crate::{Record, store};
 use bilibi_agent_api::{Error, OperationClient, Result};
 use bilibi_records::Records;
 use bilibi_tenancy::{PartyProofs, Scope};
 use rust_decimal::{Decimal, RoundingStrategy};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::{collections::BTreeMap, str::FromStr};
 
 pub(crate) fn invalid(field: &str, message: &str) -> Error {
@@ -117,12 +117,11 @@ pub(crate) async fn prepare(
     records: &Records,
     parties: &PartyProofs,
     currencies: &bilibi_currency::Currencies,
+    products: &bilibi_product::Products,
     tx: Option<&bilibi_database::MutationTransaction<'_>>,
 ) -> Result<Prepared> {
     let co = integer(v, "company_id")?;
-    let kind = if action.starts_with("item") {
-        "item"
-    } else if action.starts_with("quotation") {
+    let kind = if action.starts_with("quotation") {
         "quotation"
     } else if action.starts_with("delivery") {
         "delivery"
@@ -139,7 +138,7 @@ pub(crate) async fn prepare(
         reason: String::new(),
         quotation: None,
     };
-    if action.ends_with("transition") || action == "item.update" {
+    if action.ends_with("transition") {
         let old = store::get(c, scope.tenant(), co, kind, integer(v, "id")?)
             .await?
             .ok_or(Error::NotFound)?;
@@ -152,23 +151,6 @@ pub(crate) async fn prepare(
     }
     if kind == "delivery" {
         return crate::delivery::prepare(c, scope, v, p).await;
-    }
-    if kind == "item" {
-        if p.old.is_none() {
-            p.code = required(v, "code", 50)?;
-        }
-        if p.old.is_none() && c.query_opt("SELECT id FROM commerce_sales_items WHERE tenant_id=$1 AND company_id=$2 AND code=$3",&[&scope.tenant(),&co,&p.code]).await?.is_some() {return Err(invalid("code","This item code is already in use."));}
-        let rate = decimal(v, "tax_rate", false)?;
-        if rate > Decimal::from(100) {
-            return Err(invalid(
-                "tax_rate",
-                "Tax rate must be from 0 to 100 percent.",
-            ));
-        }
-        let currency = currency(c, scope, text(v, "currency_code"), currencies, tx).await?;
-        p.facts = json!({"currency_code":currency.code,"name":required(v,"name",200)?,"unit":required(v,"unit",20)?,"default_price":money(decimal(v,"default_price",false)?,currency.minor_units).to_string(),"tax_code":required(v,"tax_code",50)?,"tax_rate":rate.to_string(),"active":v["active"].as_bool().unwrap_or_else(||p.old.as_ref().and_then(|r|r.facts["active"].as_bool()).unwrap_or(true))});
-        p.target = "active".into();
-        return Ok(p);
     }
     if action.ends_with("transition") {
         let old = p.old.as_ref().ok_or(Error::NotFound)?;
@@ -198,7 +180,10 @@ pub(crate) async fn prepare(
             && to == "cancelled"
             && crate::delivery::has_active(c, scope, co, old.id).await?
         {
-            return Err(invalid("status", "Cancel draft deliveries first. An order with shipped or delivered quantities cannot be cancelled."));
+            return Err(invalid(
+                "status",
+                "Cancel draft deliveries first. An order with shipped or delivered quantities cannot be cancelled.",
+            ));
         }
         p.reason = if to == "cancelled" || to == "rejected" {
             required(v, "reason", 500)?
@@ -312,6 +297,14 @@ pub(crate) async fn prepare(
     }
     let currency = currency(c, scope, text(v, "currency_code"), currencies, tx).await?;
     let places = currency.minor_units;
+    let price_on = if text(v, "price_on").is_empty() {
+        today()
+    } else {
+        date(v, "price_on")?
+    };
+    let on = price_on
+        .parse::<bilibi_product::Date>()
+        .map_err(|_| invalid("price_on", "Choose a pricing date."))?;
     let input = v["lines"]
         .as_array()
         .filter(|a| !a.is_empty() && a.len() <= 100)
@@ -321,28 +314,24 @@ pub(crate) async fn prepare(
     let mut tax_total = Decimal::ZERO;
     for (i, line) in input.iter().enumerate() {
         let mut source = line.clone();
-        let mut item_code = Value::Null;
-        let catalog_id = if !text(line, "item_code").is_empty() {
-            let code = required(line, "item_code", 50)?;
-            Some(c.query_opt("SELECT id FROM commerce_sales_items WHERE tenant_id=$1 AND company_id=$2 AND code=$3",&[&scope.tenant(),&co,&code]).await?.ok_or_else(||invalid("lines","That product code is not available."))?.try_get::<_,i64>(0).map_err(bilibi_database::Error::from)?)
-        } else {
-            line["item_id"].as_i64()
+        let mut product_code = Value::Null;
+        let product_id = match line.get("product_id") {
+            None | Some(Value::Null) => None,
+            Some(_) => Some(integer(line, "product_id")?),
         };
-        if let Some(id) = catalog_id {
-            let item = store::get(c, scope.tenant(), co, "item", id)
+        if let Some(id) = product_id {
+            records
+                .check(c, scope, "product", &id.to_string())
                 .await?
-                .ok_or_else(|| invalid("lines", "A catalog item is no longer available."))?;
-            if item.facts["active"] == false {
-                return Err(invalid("lines", "Choose active catalog items."));
-            }
-            if text(&item.facts, "currency_code") != currency.code {
-                return Err(invalid(
-                    "lines",
-                    "Choose catalog items in the document currency.",
-                ));
-            }
-            source = json!({"description":item.facts["name"],"unit":item.facts["unit"],"unit_price":item.facts["default_price"],"tax_code":item.facts["tax_code"],"tax_rate":item.facts["tax_rate"],"quantity":line["quantity"]});
-            item_code = json!(item.code);
+                .map_err(|e| invalid("lines", e.message()))?;
+            let sql = c.transaction().ok_or(bilibi_database::Error::Internal)?;
+            let product = products.get(sql, scope, id).await?;
+            let price = products.price(sql, scope, id, co, &currency.code, on).await?
+                .ok_or_else(|| invalid("lines", "This product has no price for the selling company, currency and pricing date. Add a dated selling price in Products."))?;
+            source["description"] = json!(product.name);
+            source["unit"] = json!(product.base_unit);
+            source["unit_price"] = json!(price.amount.to_string());
+            product_code = json!(product.code);
         }
         let quantity = decimal(&source, "quantity", true)?;
         let price = money(decimal(&source, "unit_price", false)?, places);
@@ -362,7 +351,7 @@ pub(crate) async fn prepare(
         let tax = money(net * rate / Decimal::from(100), places);
         subtotal += net;
         tax_total += tax;
-        lines.push(json!({"line_number":i+1,"item_id":catalog_id,"item_code":item_code,"description":required(&source,"description",500)?,"unit":required(&source,"unit",20)?,"quantity":quantity.to_string(),"unit_price":price.to_string(),"tax_code":required(&source,"tax_code",50)?,"tax_rate":rate.to_string(),"subtotal":net.to_string(),"tax_total":tax.to_string(),"total":(net+tax).to_string()}));
+        lines.push(json!({"line_number":i+1,"product_id":product_id,"product_code":product_code,"description":required(&source,"description",500)?,"unit":required(&source,"unit",20)?,"quantity":quantity.to_string(),"unit_price":price.to_string(),"tax_code":required(&source,"tax_code",50)?,"tax_rate":rate.to_string(),"subtotal":net.to_string(),"tax_total":tax.to_string(),"total":(net+tax).to_string()}));
     }
     let valid_until = if kind == "quotation" {
         let d = date(v, "valid_until")?;
@@ -373,7 +362,7 @@ pub(crate) async fn prepare(
     } else {
         None
     };
-    p.facts = json!({"customer_kind":customer_kind,"customer_id":identity.record_id(),"customer_code":customer_code,"currency_code":currency.code,"valid_until":valid_until,"reference":text(v,"reference"),"lines":lines,"subtotal":money(subtotal,places).to_string(),"tax_total":money(tax_total,places).to_string(),"total":money(subtotal+tax_total,places).to_string()});
+    p.facts = json!({"customer_kind":customer_kind,"customer_id":identity.record_id(),"customer_code":customer_code,"currency_code":currency.code,"price_on":price_on,"valid_until":valid_until,"reference":text(v,"reference"),"lines":lines,"subtotal":money(subtotal,places).to_string(),"tax_total":money(tax_total,places).to_string(),"total":money(subtotal+tax_total,places).to_string()});
     if text(v, "reference").chars().count() > 200 {
         return Err(invalid("reference", "Use up to 200 characters."));
     }

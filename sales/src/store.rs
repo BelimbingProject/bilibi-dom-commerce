@@ -2,7 +2,7 @@ use crate::Record;
 use bilibi_agent_api::OperationClient;
 use bilibi_database::{Change, MutationTransaction, Result};
 use bilibi_tenancy::Scope;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use tokio_postgres::Row;
 
 fn row(r: &Row, kind: &str) -> Result<Record> {
@@ -22,16 +22,7 @@ pub(crate) async fn get(
     k: &str,
     id: i64,
 ) -> Result<Option<Record>> {
-    let sql = if k == "item" {
-        "SELECT id,revision,code,'active',facts FROM commerce_sales_items WHERE tenant_id=$1 AND company_id=$2 AND id=$3"
-    } else {
-        "SELECT id,revision,number::text,status,facts FROM commerce_sales_documents WHERE tenant_id=$1 AND company_id=$2 AND id=$3 AND kind=$4"
-    };
-    let r = if k == "item" {
-        c.query_opt(sql, &[&t, &co, &id]).await?
-    } else {
-        c.query_opt(sql, &[&t, &co, &id, &k]).await?
-    };
+    let r = c.query_opt("SELECT id,revision,number::text,status,facts FROM commerce_sales_documents WHERE tenant_id=$1 AND company_id=$2 AND id=$3 AND kind=$4", &[&t,&co,&id,&k]).await?;
     r.as_ref().map(|r| row(r, k)).transpose()
 }
 #[allow(clippy::too_many_arguments)]
@@ -46,11 +37,7 @@ pub(crate) async fn list(
     offset: i64,
 ) -> Result<Vec<Record>> {
     let query = format!("%{}%", q.replace('%', "\\%").replace('_', "\\_"));
-    let rows = if k == "item" {
-        c.query("SELECT id,revision,code,'active',facts FROM commerce_sales_items WHERE tenant_id=$1 AND company_id=$2 AND (code ILIKE $3 OR facts->>'name' ILIKE $3) ORDER BY id DESC LIMIT $4 OFFSET $5",&[&t,&co,&query,&limit,&offset]).await?
-    } else {
-        c.query("SELECT id,revision,number::text,status,facts FROM commerce_sales_documents WHERE tenant_id=$1 AND company_id=$2 AND kind=$3 AND ($4='' OR status=$4) AND (number::text ILIKE $5 OR facts->>'customer_code' ILIKE $5) ORDER BY id DESC LIMIT $6 OFFSET $7",&[&t,&co,&k,&status,&query,&limit,&offset]).await?
-    };
+    let rows = c.query("SELECT id,revision,number::text,status,facts FROM commerce_sales_documents WHERE tenant_id=$1 AND company_id=$2 AND kind=$3 AND ($4='' OR status=$4) AND (number::text ILIKE $5 OR facts->>'customer_code' ILIKE $5) ORDER BY id DESC LIMIT $6 OFFSET $7",&[&t,&co,&k,&status,&query,&limit,&offset]).await?;
     rows.iter().map(|r| row(r, k)).collect()
 }
 pub(crate) async fn history(
@@ -68,7 +55,7 @@ pub(crate) async fn apply(
     scope: &Scope,
     co: i64,
     kind: &str,
-    code: &str,
+    _code: &str,
     old: Option<Record>,
     facts: Value,
     target: &str,
@@ -79,21 +66,17 @@ pub(crate) async fn apply(
     let user = scope.user();
     let impersonator = scope.impersonator().map(|operator| operator.user());
     let kind = kind.to_owned();
-    let code = code.to_owned();
     let target = target.to_owned();
     let reason = reason.to_owned();
     tx.mutate(move |sql|Box::pin(async move {
-        let r=if kind=="item" {
-            if let Some(before)=&old { sql.query_one("UPDATE commerce_sales_items SET facts=$4,revision=revision+1 WHERE tenant_id=$1 AND company_id=$2 AND id=$3 RETURNING id,revision,code,'active',facts",&[&t,&co,&before.id,&facts]).await? }
-            else { sql.query_one("INSERT INTO commerce_sales_items(tenant_id,company_id,code,facts) VALUES($1,$2,$3,$4) RETURNING id,revision,code,'active',facts",&[&t,&co,&code,&facts]).await? }
-        } else if let Some(before)=&old {
+        let r=if let Some(before)=&old {
             sql.query_one("UPDATE commerce_sales_documents SET status=$4,revision=revision+1 WHERE tenant_id=$1 AND company_id=$2 AND id=$3 RETURNING id,revision,number::text,status,facts",&[&t,&co,&before.id,&target]).await?
         } else {
             sql.query_one("INSERT INTO commerce_sales_documents(tenant_id,company_id,kind,number,status,quotation_id,facts) SELECT $1,$2,$3,COALESCE(MAX(number),0)+1,$4,$5,$6 FROM commerce_sales_documents WHERE tenant_id=$1 AND company_id=$2 AND kind=$3 RETURNING id,revision,number::text,status,facts",&[&t,&co,&kind,&target,&quotation,&facts]).await?
         };
         let saved=row(&r,&kind)?;
         let mut changes=vec![Change{kind:format!("commerce.sales.{kind}"),id:saved.id,old:old.as_ref().map_or(json!({}),Record::snapshot),new:saved.snapshot()}];
-        if kind!="item" {
+        {
             let from=old.as_ref().map(|r|r.status.clone());
             let h=sql.query_one("INSERT INTO commerce_sales_history(tenant_id,company_id,document_id,from_status,to_status,user_id,impersonator_id,reason) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id",&[&t,&co,&saved.id,&from,&target,&user,&impersonator,&reason]).await?;
             changes.push(Change{kind:"commerce.sales.history".into(),id:h.try_get(0)?,old:json!({}),new:json!({"document_id":saved.id,"from_status":from,"to_status":target,"user_id":user,"impersonator_id":impersonator,"reason":reason})});
@@ -110,10 +93,6 @@ pub(crate) async fn count(
     status: &str,
 ) -> Result<i64> {
     let query = format!("%{}%", q.replace('%', "\\%").replace('_', "\\_"));
-    let row = if k == "item" {
-        c.query_opt("SELECT COUNT(*) FROM commerce_sales_items WHERE tenant_id=$1 AND company_id=$2 AND (code ILIKE $3 OR facts->>'name' ILIKE $3)",&[&t,&co,&query]).await?
-    } else {
-        c.query_opt("SELECT COUNT(*) FROM commerce_sales_documents WHERE tenant_id=$1 AND company_id=$2 AND kind=$3 AND ($4='' OR status=$4) AND (number::text ILIKE $5 OR facts->>'customer_code' ILIKE $5)",&[&t,&co,&k,&status,&query]).await?
-    };
+    let row = c.query_opt("SELECT COUNT(*) FROM commerce_sales_documents WHERE tenant_id=$1 AND company_id=$2 AND kind=$3 AND ($4='' OR status=$4) AND (number::text ILIKE $5 OR facts->>'customer_code' ILIKE $5)",&[&t,&co,&k,&status,&query]).await?;
     Ok(row.ok_or(bilibi_database::Error::Internal)?.try_get(0)?)
 }

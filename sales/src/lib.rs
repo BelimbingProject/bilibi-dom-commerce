@@ -1,4 +1,4 @@
-//! Commerce sales: catalog items, quotations and sales orders. All writes use
+//! Commerce sales: product-backed quotations and sales orders. All writes use
 //! the reviewed contracts in operations; pages and agents share that door.
 mod contributions;
 mod delivery;
@@ -20,7 +20,7 @@ pub const VIEW: &str = "commerce.sales.view";
 pub const MANAGE: &str = "commerce.sales.manage";
 pub const CONFIRM: &str = "commerce.sales.confirm";
 
-/// A stored item or document. Facts contain exact decimal strings. Document
+/// A stored document. Facts contain exact decimal strings. Document
 /// facts and lines are immutable; revision fences every status transition.
 #[derive(Clone, Debug)]
 pub struct Record {
