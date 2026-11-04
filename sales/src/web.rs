@@ -338,7 +338,7 @@ impl State {
             );
         }
         if self.kind == "order" {
-            fields.push(self.field("quotation_number","Accepted quotation number").hint("Leave blank to enter an order directly. A quotation replaces the customer and lines entered below."));
+            fields.push(self.field("quotation_number","Accepted quotation number").hint("Leave blank to enter an order directly. A quotation supplies the customer and lines, so leave them empty below."));
         }
         fields
     }
@@ -371,7 +371,7 @@ impl State {
         }
         if self.kind == "order" {
             if let Some(q) = self.form.get("quotation_number").filter(|s| !s.is_empty()) {
-                return json!({"company_id":s.current_company().map_or(0,|c|c.get()),"quotation_number":q.parse::<i64>().unwrap_or(0)});
+                v["quotation_number"] = json!(q.parse::<i64>().unwrap_or(0));
             }
         }
         if self.kind != "item" {
@@ -409,7 +409,9 @@ impl State {
                     }
                 })
                 .collect::<Vec<_>>();
-            v["lines"] = json!(lines);
+            if !lines.is_empty() || v["quotation_number"].is_null() {
+                v["lines"] = json!(lines);
+            }
         }
         v
     }

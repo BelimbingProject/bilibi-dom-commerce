@@ -176,9 +176,18 @@ pub(crate) async fn prepare(
             "Choose a quotation by its ID or its number, not both.",
         ));
     }
+    let mut from_quote = None;
     if kind == "order"
         && (v["quotation_id"].as_i64().is_some() || v["quotation_number"].as_i64().is_some())
     {
+        if v.get("customer_code").is_some_and(|x| !x.is_null())
+            || v.get("lines").is_some_and(|x| !x.is_null())
+        {
+            return Err(invalid(
+                "quotation_id",
+                "An order from a quotation uses that quotation's customer and lines. Remove the customer and lines, or clear the quotation.",
+            ));
+        }
         let id = if v["quotation_id"].as_i64().is_some() {
             integer(v, "quotation_id")?
         } else {
@@ -192,16 +201,15 @@ pub(crate) async fn prepare(
             return Err(invalid("quotation_id", "Choose an accepted quotation."));
         }
         if c.query_opt("SELECT id FROM commerce_sales_documents WHERE tenant_id=$1 AND company_id=$2 AND quotation_id=$3",&[&scope.tenant(),&co,&id]).await?.is_some() {return Err(invalid("quotation_id","A sales order already exists for this quotation."));}
-        p.facts = quote.facts;
-        p.facts["quotation_id"] = json!(id);
-        p.quotation = Some(id);
-        return Ok(p);
+        from_quote = Some((id, quote));
     }
-    let customer_kind = required(v, "customer_kind", 20)?;
+    let (customer_kind, customer_code) = match &from_quote {
+        Some((_, q)) => (text(&q.facts, "customer_kind").to_owned(), text(&q.facts, "customer_code").to_owned()),
+        None => (required(v, "customer_kind", 20)?, required(v, "customer_code", 255)?),
+    };
     if !["company", "person"].contains(&customer_kind.as_str()) {
         return Err(invalid("customer_kind", "Choose Company or Person."));
     }
-    let customer_code = required(v, "customer_code", 255)?;
     let identity = parties
         .parties_by_codes(c, scope, std::slice::from_ref(&customer_code))
         .await?
@@ -227,6 +235,12 @@ pub(crate) async fn prepare(
             "customer_code",
             "Choose an active customer other than the current company.",
         ));
+    }
+    if let Some((id, quote)) = from_quote {
+        p.facts = quote.facts;
+        p.facts["quotation_id"] = json!(id);
+        p.quotation = Some(id);
+        return Ok(p);
     }
     let currency = required(v, "currency_code", 3)?;
     if currency.len() != 3 || !currency.bytes().all(|b| b.is_ascii_uppercase()) {
