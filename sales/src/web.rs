@@ -377,7 +377,7 @@ impl State {
                     if let Some(record) = resolved.first() {
                         selected = Some((
                             value,
-                            record.pill(&format!("product-{i}-chosen"), self.framed),
+                            record.pill(format!("product-{i}-chosen"), self.framed),
                         ));
                     }
                     let c = self.sales.db.get().await?;
@@ -417,9 +417,7 @@ impl State {
                 }
             }
             let hits = if selected.is_none() && !query.is_empty() {
-                self.records
-                    .search(scope, &["product".into()], &query)
-                    .await?
+                self.records.search(scope, &["product"], &query).await?
             } else {
                 vec![]
             };
