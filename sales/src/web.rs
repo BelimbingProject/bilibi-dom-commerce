@@ -484,6 +484,12 @@ impl State {
             }
             "create_item" | "create_quotation" | "create_order" => {
                 self.form = posted(v);
+                if text(v, "intent") == "add_line" {
+                    if self.line_count < 100 {
+                        self.line_count += 1;
+                    }
+                    return Ok(());
+                }
                 let key = match self.kind {
                     "item" => "commerce.sales.item.create",
                     "quotation" => "commerce.sales.quotation.create",
