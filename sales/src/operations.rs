@@ -148,13 +148,15 @@ impl WriteHandler for Write {
         })
     }
 }
+// Base Agent API accepts its documented schema dialect, not full JSON Schema.
+// Object fields are closed by default; cross-field and array bounds live in prepare.
 fn schema(action: &str) -> Value {
-    let line = json!({"type":"object","additionalProperties":false,"properties":{"item_id":{"type":"integer","minimum":1},"item_code":{"type":"string","maxLength":50},"description":{"type":"string","maxLength":500},"quantity":{"type":"string","maxLength":30},"unit":{"type":"string","maxLength":20},"unit_price":{"type":"string","maxLength":30},"tax_code":{"type":"string","maxLength":50},"tax_rate":{"type":"string","maxLength":30}}});
-    let mut schema = json!({"type":"object","required":["company_id"],"additionalProperties":false,"properties":{
+    let line = json!({"type":"object","properties":{"item_id":{"type":"integer","minimum":1},"item_code":{"type":"string","maxLength":50},"description":{"type":"string","maxLength":500},"quantity":{"type":"string","maxLength":30},"unit":{"type":"string","maxLength":20},"unit_price":{"type":"string","maxLength":30},"tax_code":{"type":"string","maxLength":50},"tax_rate":{"type":"string","maxLength":30}}});
+    let mut schema = json!({"type":"object","required":["company_id"],"properties":{
  "company_id":{"type":"integer","minimum":1},"id":{"type":"integer","minimum":1},"revision":{"type":"integer","minimum":1},
  "code":{"type":"string","maxLength":50},"name":{"type":"string","maxLength":200},"unit":{"type":"string","maxLength":20},"default_price":{"type":"string","maxLength":30},"tax_code":{"type":"string","maxLength":50},"tax_rate":{"type":"string","maxLength":30},"active":{"type":"boolean"},
  "customer_kind":{"type":"string","enum":["company","person"]},"customer_code":{"type":"string","maxLength":255},"currency_code":{"type":"string","maxLength":3},"valid_until":{"type":"string","maxLength":10},"reference":{"type":"string","maxLength":200},"quotation_id":{"type":"integer","minimum":1},"quotation_number":{"type":"integer","minimum":1},"status":{"type":"string","enum":["sent","accepted","rejected","expired","confirmed","cancelled"]},"reason":{"type":"string","maxLength":500},
- "lines":{"type":"array","minItems":1,"maxItems":100,"items":line}}});
+ "lines":{"type":"array","items":line}}});
     let (allowed, required): (&[&str], &[&str]) = match action {
         "item.create" => (
             &[
@@ -241,9 +243,6 @@ fn schema(action: &str) -> Value {
         properties.retain(|key, _| allowed.contains(&key.as_str()));
     }
     schema["required"] = json!(required);
-    if action == "order.create" {
-        schema["anyOf"] = json!([{"required":["quotation_id"]},{"required":["quotation_number"]},{"required":["customer_kind","customer_code","currency_code","lines"]}]);
-    }
     if action.ends_with("transition") {
         schema["properties"]["status"]["enum"] = if action.starts_with("quotation") {
             json!(["sent", "accepted", "rejected", "expired"])
