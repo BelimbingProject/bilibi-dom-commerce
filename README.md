@@ -1,6 +1,6 @@
 # Commerce
 
-Commerce manages a product catalog, quotations and sales orders in Bilibi.
+Commerce manages a product catalog, quotations, sales orders and deliveries in Bilibi.
 
 For example, create a product with a unit, price and tax code. Add it to a quotation for a Core company or person. Mark the quotation as sent, record acceptance, then create and confirm a sales order. Confirmation publishes the line snapshots that another Domain can use to prepare an invoice.
 
@@ -33,7 +33,8 @@ Each kind of record has one list and one detail page under **Commerce**:
 | --- | --- |
 | Products | Create products and edit their name, unit, default price and tax facts in place. |
 | Quotations | Create a quotation, mark it sent, then accept, reject or expire it. |
-| Sales orders | Create directly or copy an accepted quotation, then confirm or cancel. |
+| Sales orders | Create directly or copy an accepted quotation, then confirm or cancel. See delivered and remaining quantities on each line. |
+| Delivery orders | Choose a confirmed sales order, save full or partial quantities, then ship and mark delivered. Print an A4 delivery order. |
 
 A customer is a Core Company or Person. Enter its existing Core code and choose its type. Commerce proves that you can use that record and stores its kind and ID, without creating a separate customer identity.
 
@@ -45,7 +46,7 @@ Documents keep their original lines and totals. Product edits do not rewrite the
 
 Confirmation freezes the order for the event handoff. Cancellation remains available and publishes a separate status fact so a future consumer can reconcile a cancelled order. Cancelling an order does not reverse an invoice.
 
-Delivery orders, the Finance consumer, stock, price lists and discount tiers are follow-up work. The repository does not mount itself into a published Bilibi application.
+The Finance consumer, stock, price lists and discount tiers are follow-up work. The repository does not mount itself into a published Bilibi application.
 
 ## Where to go next
 

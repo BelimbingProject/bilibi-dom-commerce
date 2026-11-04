@@ -395,7 +395,18 @@ impl State {
     }
     fn line_fields(&self) -> Vec<Vec<Field>> {
         if self.kind == "delivery" {
-            return self.source.as_ref().and_then(|r|r.facts["lines"].as_array()).map(|lines|lines.iter().enumerate().map(|(i,l)|vec![self.field(&format!("line_{i}_quantity"),&format!("Line {}: {} ({})",i+1,text(l,"description"),text(l,"unit"))).hint(format!("Ordered: {}. Delivered: {}. Remaining: {}. Available: {}. Leave blank or enter 0 to skip this line.",text(l,"quantity"),text(l,"delivered"),text(l,"remaining"),text(l,"available")))]).collect()).unwrap_or_default();
+            let Some(lines) = self
+                .source
+                .as_ref()
+                .and_then(|r| r.facts["lines"].as_array())
+            else {
+                return Vec::new();
+            };
+            return lines.iter().enumerate().map(|(i,line)| {
+                let label=format!("{} ({})",text(line,"description"),text(line,"unit"));
+                let hint=format!("Ordered: {}. Delivered: {}. Remaining: {}. Available: {}. Leave blank or enter 0 to skip this line.",text(line,"quantity"),text(line,"delivered"),text(line,"remaining"),text(line,"available"));
+                vec![self.field(&format!("line_{i}_quantity"),&label).hint(hint)]
+            }).collect();
         }
         (0..self.line_count)
             .map(|i| {
@@ -1025,6 +1036,11 @@ impl State {
             flash,
             fields: self.fields(),
             lines: self.line_fields(),
+            line_description: if self.kind == "delivery" {
+                "Choose the quantity for this delivery."
+            } else {
+                "Enter a product code and quantity, or enter all line details. Product lines use the catalog price, unit and tax."
+            },
             line_count: self.line_count,
             body,
             detail,
@@ -1085,6 +1101,7 @@ struct View<'a> {
     fields: Vec<Field>,
     lines: Vec<Vec<Field>>,
     line_count: usize,
+    line_description: &'a str,
     body: Html,
     detail: Html,
     history: Html,

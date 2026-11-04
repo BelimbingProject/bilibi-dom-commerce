@@ -34,8 +34,6 @@
 {% if kind != "item" %}
 {% for row in lines %}
 {% let heading_id = "line-heading-{}"|format(loop.index) %}{% let line_heading = "Line {}"|format(loop.index) %}
-{% let line_description = "Enter a product code and quantity, or enter all line details. Product lines use the catalog price, unit and tax." %}
-{% let line_description = if kind == "delivery" { "Choose the quantity for this delivery." } else { line_description } %}
 {% call forms::section(labelledby=heading_id,heading=line_heading,description=line_description) %}
 {% call forms::field_row(fields=row) %}{% endcall %}
 {% endcall %}

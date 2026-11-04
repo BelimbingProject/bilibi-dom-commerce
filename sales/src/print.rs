@@ -61,7 +61,7 @@ impl HtmlOwner for DeliveryPrint {
                 .sales
                 .get(s, company.get(), "delivery", id(Some(reference))?)
                 .await?;
-            let c = self.sales.db.get().await?;
+            let c = self.sales.db.get().await.map_err(Error::from)?;
             let issuer=c.query_opt("SELECT name FROM companies WHERE tenant_id=$1 AND id=$2 AND deleted_at IS NULL", &[&s.tenant(),&company.get()]).await?.ok_or(Error::NotFound)?.try_get(0)?;
             let lines = record.facts["lines"]
                 .as_array()
