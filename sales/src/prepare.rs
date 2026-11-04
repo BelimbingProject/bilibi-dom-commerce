@@ -227,7 +227,7 @@ pub(crate) async fn prepare(
             return Err(invalid("quotation_id", "Choose an accepted quotation."));
         }
         if c.query_opt("SELECT id FROM commerce_sales_documents WHERE tenant_id=$1 AND company_id=$2 AND quotation_id=$3",&[&scope.tenant(),&co,&id]).await?.is_some() {return Err(invalid("quotation_id","A sales order already exists for this quotation."));}
-        for field in ["currency_code", "customer_kind"] {
+        for field in ["currency_code", "customer_kind", "price_on"] {
             let given = text(v, field);
             if !given.is_empty() && given != text(&quote.facts, field) {
                 return Err(invalid(
@@ -315,15 +315,20 @@ pub(crate) async fn prepare(
     for (i, line) in input.iter().enumerate() {
         let mut source = line.clone();
         let mut product_code = Value::Null;
-        let product_id = match line.get("product_id") {
+        let mut product_id = match line.get("product_id") {
             None | Some(Value::Null) => None,
             Some(_) => Some(integer(line, "product_id")?),
         };
         if let Some(id) = product_id {
-            records
+            let reference = records
                 .check(c, scope, "product", &id.to_string())
                 .await?
                 .map_err(|e| invalid("lines", e.message()))?;
+            let id = reference
+                .id
+                .parse::<i64>()
+                .map_err(|_| bilibi_database::Error::Internal)?;
+            product_id = Some(id);
             let sql = c.transaction().ok_or(bilibi_database::Error::Internal)?;
             let product = products.get(sql, scope, id).await?;
             let price = products.price(sql, scope, id, co, &currency.code, on).await?

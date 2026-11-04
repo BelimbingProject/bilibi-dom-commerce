@@ -549,6 +549,7 @@ impl State {
         if self.kind == "order" {
             if let Some(q) = self.form.get("quotation_number").filter(|s| !s.is_empty()) {
                 v["quotation_number"] = json!(q.parse::<i64>().unwrap_or(0));
+                v.as_object_mut().expect("object input").remove("price_on");
             }
         }
         {
