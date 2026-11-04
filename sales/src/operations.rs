@@ -141,7 +141,12 @@ impl WriteHandler for Write {
                                 NewEvent {
                                     name: CONFIRMED,
                                     subject: &subject,
-                                    key: &key,
+                                    key: &format!(
+                                        "order:{}:revision:{}:confirmed:line:{}",
+                                        record.id,
+                                        record.revision,
+                                        index + 1
+                                    ),
                                     payload,
                                 },
                             )
