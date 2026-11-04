@@ -12,7 +12,7 @@ Browser actions and agents call the same registered safe-write operations. The b
 | `commerce.sales.item.update` | `id`, current `revision`, `name`, `unit`, `default_price`, `tax_code`, `tax_rate`; optional `active` |
 | `commerce.sales.quotation.create` | `customer_kind`, `customer_code`, `currency_code`, `valid_until`, `lines`; optional `reference` |
 | `commerce.sales.quotation.transition` | `id`, current `revision`, `status`; `reason` for rejection |
-| `commerce.sales.order.create` | Either `quotation_id` (or `quotation_number`, not both) or the same customer, currency and lines as a quotation; no expiry required. With a quotation, the customer and lines come from it and are checked again, so supplying `customer_code` or `lines` is refused |
+| `commerce.sales.order.create` | Either `quotation_id` (or `quotation_number`, not both) or the same customer, currency and lines as a quotation; no expiry required. With a quotation, the customer and lines come from it and are checked again, so supplying `customer_code` or `lines` is refused. `reference` is kept on the order. `currency_code` and `customer_kind` are optional and refused only when they differ from the quotation |
 | `commerce.sales.order.transition` | `id`, current `revision`, `status`; `reason` for cancellation |
 
 `customer_kind` is `company` or `person`. These are Core record kinds, with the same meaning as Finance receivables. A typed line has `description`, `quantity`, `unit`, `unit_price`, `tax_code` and `tax_rate`. A catalog line instead has `item_id` or `item_code`, and `quantity`. The stored line includes all resolved facts, its 1-based `line_number`, and subtotal, tax and total.
