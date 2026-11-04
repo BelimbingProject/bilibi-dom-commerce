@@ -51,29 +51,35 @@ impl RecordOwner for Owner {
 }
 bilibi_records::declare!(
     "commerce/sales",
-    RecordKind::new("commerce.sales.item", "commerce-item", &ITEM).page("/commerce/items/{id}")
+    RecordKind::new("commerce.sales.item", "commerce_sales_items", &ITEM)
+        .page("/commerce/items/{id}")
 );
 bilibi_records::declare!(
     "commerce/sales",
-    RecordKind::new("commerce.sales.quotation", "commerce-quotation", &QUOTATION)
-        .page("/commerce/quotations/{id}")
+    RecordKind::new(
+        "commerce.sales.quotation",
+        "commerce_sales_quotations",
+        &QUOTATION
+    )
+    .page("/commerce/quotations/{id}")
 );
 bilibi_records::declare!(
     "commerce/sales",
-    RecordKind::new("commerce.sales.order", "commerce-order", &ORDER)
+    RecordKind::new("commerce.sales.order", "commerce_sales_orders", &ORDER)
         .page("/commerce/sales-orders/{id}")
 );
 
-// Grid's work-company source predicate matches other company-owned Domains.
+// Grid sources expose only records in the reader's staff desks; the owner
+// rechecks the capability and live company before resolving each reference.
 const FIELDS: &[Field] = &[
     Field::new("id", "ID", FieldType::Integer),
     Field::new("code", "Number or code", FieldType::String),
 ];
 static GRID: GridContribution = GridContribution {
     tables: &[
-        TableDecl::new("commerce-item", "Products", VIEW, Source::tenant("SELECT id, code FROM commerce_sales_items WHERE tenant_id=$1 AND company_id IN (SELECT d.company_id FROM user_desks d JOIN users u ON u.tenant_id=d.tenant_id AND u.person_id=d.person_id AND u.kind='staff' AND u.deleted_at IS NULL WHERE d.tenant_id=$1 AND u.id=$2)"), "id", FIELDS).label_field("code").record_types(&["commerce.sales.item"]),
-        TableDecl::new("commerce-quotation", "Quotations", VIEW, Source::tenant("SELECT id, number::text AS code FROM commerce_sales_documents WHERE tenant_id=$1 AND kind='quotation' AND company_id IN (SELECT d.company_id FROM user_desks d JOIN users u ON u.tenant_id=d.tenant_id AND u.person_id=d.person_id AND u.kind='staff' AND u.deleted_at IS NULL WHERE d.tenant_id=$1 AND u.id=$2)"), "id", FIELDS).label_field("code").record_types(&["commerce.sales.quotation"]),
-        TableDecl::new("commerce-order", "Sales orders", VIEW, Source::tenant("SELECT id, number::text AS code FROM commerce_sales_documents WHERE tenant_id=$1 AND kind='order' AND company_id IN (SELECT d.company_id FROM user_desks d JOIN users u ON u.tenant_id=d.tenant_id AND u.person_id=d.person_id AND u.kind='staff' AND u.deleted_at IS NULL WHERE d.tenant_id=$1 AND u.id=$2)"), "id", FIELDS).label_field("code").record_types(&["commerce.sales.order"]),
+        TableDecl::new("commerce_sales_items", "Products", VIEW, Source::tenant("SELECT id, code FROM commerce_sales_items WHERE tenant_id=$1 AND company_id IN (SELECT d.company_id FROM user_desks d JOIN users u ON u.tenant_id=d.tenant_id AND u.person_id=d.person_id AND u.kind='staff' AND u.deleted_at IS NULL WHERE d.tenant_id=$1 AND u.id=$2)"), "id", FIELDS).label_field("code").record_types(&["commerce.sales.item"]),
+        TableDecl::new("commerce_sales_quotations", "Quotations", VIEW, Source::tenant("SELECT id, number::text AS code FROM commerce_sales_documents WHERE tenant_id=$1 AND kind='quotation' AND company_id IN (SELECT d.company_id FROM user_desks d JOIN users u ON u.tenant_id=d.tenant_id AND u.person_id=d.person_id AND u.kind='staff' AND u.deleted_at IS NULL WHERE d.tenant_id=$1 AND u.id=$2)"), "id", FIELDS).label_field("code").record_types(&["commerce.sales.quotation"]),
+        TableDecl::new("commerce_sales_orders", "Sales orders", VIEW, Source::tenant("SELECT id, number::text AS code FROM commerce_sales_documents WHERE tenant_id=$1 AND kind='order' AND company_id IN (SELECT d.company_id FROM user_desks d JOIN users u ON u.tenant_id=d.tenant_id AND u.person_id=d.person_id AND u.kind='staff' AND u.deleted_at IS NULL WHERE d.tenant_id=$1 AND u.id=$2)"), "id", FIELDS).label_field("code").record_types(&["commerce.sales.order"]),
     ],
     record_fields: &[],
     links: &[]
