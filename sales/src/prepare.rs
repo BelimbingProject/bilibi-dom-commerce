@@ -21,8 +21,14 @@ pub(crate) fn integer(v: &Value, k: &str) -> Result<i64> {
 }
 fn required(v: &Value, k: &str, max: usize) -> Result<String> {
     let s = text(v, k);
-    if s.is_empty() || s.chars().count() > max || s.contains('\0') {
-        return Err(invalid(k, "Enter a value within the field limit."));
+    if s.is_empty() {
+        return Err(invalid(k, &format!("Enter a {}.", k.replace('_', " "))));
+    }
+    if s.chars().count() > max {
+        return Err(invalid(k, &format!("Use up to {max} characters.")));
+    }
+    if s.contains('\0') {
+        return Err(invalid(k, "Remove unsupported characters."));
     }
     Ok(s.into())
 }

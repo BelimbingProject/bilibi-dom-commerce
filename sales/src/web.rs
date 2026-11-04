@@ -549,10 +549,7 @@ impl State {
                             self.pending = Some((event.into(), key.into(), input))
                         }
                         Ok(review) => {
-                            self.flash = Some((
-                                StatusKind::Error,
-                                format!("This change was refused: {}", review["results"]),
-                            ))
+                            self.flash = Some((StatusKind::Error, review_refusal(&review)))
                         }
                         Err(e) => self.flash = Some((StatusKind::Error, e.to_string())),
                     };
@@ -772,34 +769,30 @@ impl State {
             }
             body = render(&table)?;
         }
-        let controls = vec![
-            ToolbarControl::search(
-                "commerce-search",
-                "search",
-                "Search",
-                &self.list.search,
-                "Code or customer code",
-            ),
-            ToolbarControl::select(
+        let mut controls = vec![ToolbarControl::search(
+            "commerce-search",
+            "search",
+            "Search",
+            &self.list.search,
+            "Code or customer code",
+        )];
+        if self.kind != "item" {
+            let statuses: &[&str] = if self.kind == "quotation" {
+                &["", "draft", "sent", "accepted", "rejected", "expired"]
+            } else {
+                &["", "draft", "confirmed", "cancelled"]
+            };
+            controls.push(ToolbarControl::select(
                 "commerce-status",
                 "status",
                 "Status",
                 self.list.filters.get("status").map_or("", String::as_str),
-                [
-                    "",
-                    "draft",
-                    "sent",
-                    "accepted",
-                    "rejected",
-                    "expired",
-                    "confirmed",
-                    "cancelled",
-                ]
-                .iter()
-                .map(|s| Choice::new(if s.is_empty() { "All" } else { *s }, *s))
-                .collect(),
-            ),
-        ];
+                statuses
+                    .iter()
+                    .map(|s| Choice::new(if s.is_empty() { "All" } else { *s }, *s))
+                    .collect(),
+            ));
+        }
         let toolbar = render(&FilterToolbar::new("commerce-filters", controls))?;
         let pagination = render(&Pagination::new(
             "commerce-pages",
@@ -988,3 +981,21 @@ bilibi_ui::record_fields! { mod item_fields {
 bilibi_ui::record_fields! { mod document_fields {
  CODE:bilibi_ui::RecordField::new("code","Number"),CUSTOMER:bilibi_ui::RecordField::new("customer_code","Customer code").slot("customer"),CURRENCY:bilibi_ui::RecordField::new("currency_code","Currency"),REFERENCE:bilibi_ui::RecordField::new("reference","Reference"),EXPIRY:bilibi_ui::RecordField::new("valid_until","Valid until"),NET:bilibi_ui::RecordField::new("subtotal","Subtotal"),TAX:bilibi_ui::RecordField::new("tax_total","Tax"),TOTAL:bilibi_ui::RecordField::new("total","Total"),STATUS:bilibi_ui::RecordField::new("status","Status")
 }}
+
+fn review_refusal(review: &Value) -> String {
+    let messages = review["results"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|r| r["error"]["fields"].as_object())
+        .flat_map(|fields| fields.values())
+        .filter_map(Value::as_array)
+        .flatten()
+        .filter_map(Value::as_str)
+        .collect::<Vec<_>>();
+    if messages.is_empty() {
+        "This change is no longer available. Reload the record and try again.".into()
+    } else {
+        messages.join(" ")
+    }
+}
