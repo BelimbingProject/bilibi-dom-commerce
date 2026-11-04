@@ -171,7 +171,7 @@ pub(crate) async fn prepare(
             integer(v, "quotation_id")?
         } else {
             let number = integer(v, "quotation_number")?;
-            c.query_opt("SELECT id FROM commerce_sales_documents WHERE tenant_id=$1 AND company_id=$2 AND kind='quotation' AND number=$3",&[&scope.tenant(),&co,&number]).await?.ok_or_else(||invalid("quotation_number","That quotation is not available."))?.try_get(0)?
+            c.query_opt("SELECT id FROM commerce_sales_documents WHERE tenant_id=$1 AND company_id=$2 AND kind='quotation' AND number=$3",&[&scope.tenant(),&co,&number]).await?.ok_or_else(||invalid("quotation_number","That quotation is not available."))?.try_get(0).map_err(bilibi_database::Error::from)?
         };
         let quote = store::get(c, scope.tenant(), co, "quotation", id)
             .await?
@@ -235,7 +235,7 @@ pub(crate) async fn prepare(
         let mut item_code = Value::Null;
         let catalog_id = if !text(line, "item_code").is_empty() {
             let code = required(line, "item_code", 50)?;
-            Some(c.query_opt("SELECT id FROM commerce_sales_items WHERE tenant_id=$1 AND company_id=$2 AND code=$3",&[&scope.tenant(),&co,&code]).await?.ok_or_else(||invalid("lines","That product code is not available."))?.try_get::<_,i64>(0)?)
+            Some(c.query_opt("SELECT id FROM commerce_sales_items WHERE tenant_id=$1 AND company_id=$2 AND code=$3",&[&scope.tenant(),&co,&code]).await?.ok_or_else(||invalid("lines","That product code is not available."))?.try_get::<_,i64>(0).map_err(bilibi_database::Error::from)?)
         } else {
             line["item_id"].as_i64()
         };
