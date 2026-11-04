@@ -137,6 +137,7 @@ struct State {
     rows: Vec<Record>,
     record: Option<Record>,
     source: Option<Record>,
+    source_requested: bool,
     history: Vec<Value>,
     manage: bool,
     confirm: bool,
@@ -213,6 +214,7 @@ impl State {
             rows: vec![],
             record: None,
             source: None,
+            source_requested: k == "delivery" && q.contains_key("order_number"),
             history: vec![],
             manage: false,
             confirm: false,
@@ -315,7 +317,9 @@ impl State {
                 )
                 .await?;
         }
-        if self.kind == "delivery" && self.editing && self.source.is_none() {
+        if self.kind == "delivery" && self.editing && self.source_requested && self.source.is_none()
+        {
+            self.source_requested = false;
             if let Some(number) = self
                 .form
                 .get("order_number")
@@ -559,6 +563,7 @@ impl State {
                 self.errors.clear();
                 self.line_count = 1;
                 self.source = None;
+                self.source_requested = false;
             }
             "close" => {
                 self.editing = false;
@@ -576,6 +581,7 @@ impl State {
                 self.form = posted(v);
                 if self.kind == "delivery" && text(v, "intent") == "load_order" {
                     self.source = None;
+                    self.source_requested = true;
                     return Ok(());
                 }
                 if self.kind == "delivery"
