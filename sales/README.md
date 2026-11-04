@@ -12,10 +12,10 @@ Browser actions and agents call the same registered safe-write operations. The b
 | `commerce.sales.item.update` | `id`, current `revision`, `name`, `unit`, `default_price`, `tax_code`, `tax_rate`; optional `active` |
 | `commerce.sales.quotation.create` | `customer_kind`, `customer_code`, `currency_code`, `valid_until`, `lines`; optional `reference` |
 | `commerce.sales.quotation.transition` | `id`, current `revision`, `status`; `reason` for rejection |
-| `commerce.sales.order.create` | Either `quotation_id` or the same customer, currency and lines as a quotation; no expiry required |
+| `commerce.sales.order.create` | Either `quotation_id` (or `quotation_number`) or the same customer, currency and lines as a quotation; no expiry required |
 | `commerce.sales.order.transition` | `id`, current `revision`, `status`; `reason` for cancellation |
 
-`customer_kind` is `company` or `person`. These are Core record kinds, with the same meaning as Finance receivables. A typed line has `description`, `quantity`, `unit`, `unit_price`, `tax_code` and `tax_rate`. A catalog line instead has `item_id` and `quantity`. The stored line includes all resolved facts, its 1-based `line_number`, and subtotal, tax and total.
+`customer_kind` is `company` or `person`. These are Core record kinds, with the same meaning as Finance receivables. A typed line has `description`, `quantity`, `unit`, `unit_price`, `tax_code` and `tax_rate`. A catalog line instead has `item_id` or `item_code`, and `quantity`. The stored line includes all resolved facts, its 1-based `line_number`, and subtotal, tax and total.
 
 Quantities, prices and rates are exact decimal strings with at most four decimal places and values at most 999,999,999. Quantities must be positive; prices and tax may be zero. Rates are percentages from 0 to 100. A document has 1–100 lines. Each line subtotal is quantity times price, rounded half up to two decimals. Tax is that rounded subtotal times the rate, rounded half up to two decimals. Document totals add those rounded amounts. Currency codes are three uppercase letters; Commerce performs no conversion.
 

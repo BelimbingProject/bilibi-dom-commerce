@@ -39,7 +39,7 @@ inventory::submit! {Contribution::new(EVENTS,crate::operations::STATUS_CHANGED,p
 inventory::submit! {Contribution::new(PAGE_WRITES,PAGES,provenance!(),&PageWrites{service:PAGES,contracts:&[
 ("create_item","commerce.sales.item.create"),("update_item","commerce.sales.item.update"),
 ("create_quotation","commerce.sales.quotation.create"),("quotation_transition","commerce.sales.quotation.transition"),
-("create_order","commerce.sales.order.create"),("order_transition","commerce.sales.order.transition")],pending:Pending::None})}
+("create_order","commerce.sales.order.create"),("order_transition","commerce.sales.order.transition"),("confirm_action","commerce.sales.quotation.transition"),("confirm_action","commerce.sales.order.transition")],pending:Pending::None})}
 macro_rules! route {($id:literal,$path:literal,$op:literal)=>{inventory::submit!{Contribution::new(ROUTES,$id,provenance!(),&Route{company_scope:CompanyScope::Company,method:Method::Get,path:$path,service:PAGES,operation:$op,access:Access::Capability(VIEW),framed:true})}};}
 route!("commerce/sales.items", "/commerce/items", "items");
 route!("commerce/sales.item", "/commerce/items/{id}", "item");

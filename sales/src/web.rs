@@ -241,7 +241,7 @@ impl State {
                 self.history = self.sales.history(s, company, id).await?;
             }
         } else {
-            let status = self.list.filters.get("status").map_or("", String::as_str);
+            let status = self.list.filters.get("status").cloned().unwrap_or_default();
             self.rows = self
                 .sales
                 .list(
@@ -249,7 +249,7 @@ impl State {
                     company,
                     self.kind,
                     &self.list.search,
-                    status,
+                    &status,
                     self.list.page_size as i64,
                     self.list.offset().min(i64::MAX as u64) as i64,
                 )
@@ -261,9 +261,27 @@ impl State {
                 company,
                 self.kind,
                 &self.list.search,
-                status,
+                &status,
             )
             .await? as u64;
+            drop(c);
+            if self
+                .list
+                .clamp_to_last_page(self.total.div_ceil(self.list.page_size), true)
+            {
+                self.rows = self
+                    .sales
+                    .list(
+                        s,
+                        company,
+                        self.kind,
+                        &self.list.search,
+                        &status,
+                        self.list.page_size as i64,
+                        self.list.offset().min(i64::MAX as u64) as i64,
+                    )
+                    .await?;
+            }
             self.columns
                 .load(
                     s,
@@ -528,7 +546,7 @@ impl State {
                 }
             }
             "confirm_action" => {
-                if let Some((event, key, input)) = self.pending.take() {
+                if let Some((_event, key, input)) = self.pending.take() {
                     let key = if key == "commerce.sales.quotation.transition" {
                         "commerce.sales.quotation.transition"
                     } else {
@@ -538,7 +556,7 @@ impl State {
                         scope: r.scope,
                         credential: r.credential,
                         service: PAGES,
-                        event: &event,
+                        event: "confirm_action",
                         contract: key,
                     };
                     match self.contracts.commit(&call, input).await {
