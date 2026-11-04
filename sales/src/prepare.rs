@@ -201,6 +201,15 @@ pub(crate) async fn prepare(
             return Err(invalid("quotation_id", "Choose an accepted quotation."));
         }
         if c.query_opt("SELECT id FROM commerce_sales_documents WHERE tenant_id=$1 AND company_id=$2 AND quotation_id=$3",&[&scope.tenant(),&co,&id]).await?.is_some() {return Err(invalid("quotation_id","A sales order already exists for this quotation."));}
+        for field in ["currency_code", "customer_kind"] {
+            let given = text(v, field);
+            if !given.is_empty() && given != text(&quote.facts, field) {
+                return Err(invalid(
+                    field,
+                    "This differs from the quotation. Clear it to use the quotation's value.",
+                ));
+            }
+        }
         from_quote = Some((id, quote));
     }
     let (customer_kind, customer_code) = match &from_quote {
@@ -243,7 +252,11 @@ pub(crate) async fn prepare(
         ));
     }
     if let Some((id, quote)) = from_quote {
+        if text(v, "reference").chars().count() > 200 {
+            return Err(invalid("reference", "Use up to 200 characters."));
+        }
         p.facts = quote.facts;
+        p.facts["reference"] = json!(text(v, "reference"));
         p.facts["quotation_id"] = json!(id);
         p.quotation = Some(id);
         return Ok(p);
