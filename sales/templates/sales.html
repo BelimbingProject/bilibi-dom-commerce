@@ -37,7 +37,7 @@
 {% endfor %}
 {% if line_count < 100 %}{% call ui::button(event="add_line") %}+ Line{% endcall %}{% endif %}
 {% endif %}
-{% call ui::button(button_type="submit",variant=bilibi_ui::ButtonVariant::Primary) %}Save draft{% endcall %}
+{% call ui::button(button_type="submit",variant=bilibi_ui::ButtonVariant::Primary) %}{% if kind == "item" %}Create product{% else %}Save draft{% endif %}{% endcall %}
 {% call ui::button(event="close") %}Cancel{% endcall %}
 {% endcall %}
 {% endcall %}

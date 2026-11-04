@@ -184,6 +184,13 @@ impl State {
                     .map(|(k, l)| BuiltinColumn::new(k, l))
                     .collect(),
             )
+            .and_then(|columns| {
+                columns.with_record_slots(if k == "item" {
+                    item_fields::ALL
+                } else {
+                    document_fields::ALL
+                })
+            })
             .map_err(|_| Error::Internal)?,
             display_policy: p.display.clone(),
             locales: p.locales.clone(),
@@ -364,7 +371,7 @@ impl State {
         }
         if self.kind == "order" {
             if let Some(q) = self.form.get("quotation_number").filter(|s| !s.is_empty()) {
-                v["quotation_number"] = json!(q.parse::<i64>().unwrap_or(0));
+                return json!({"company_id":s.current_company().map_or(0,|c|c.get()),"quotation_number":q.parse::<i64>().unwrap_or(0)});
             }
         }
         if self.kind != "item" {
@@ -612,7 +619,12 @@ impl State {
                     ("total", "Total"),
                 ]
             };
-            for (key, label) in fields {
+            for (key, _) in fields {
+                let label = if self.kind == "item" {
+                    item_fields::get(key).label
+                } else {
+                    document_fields::get(key).label
+                };
                 let value = if self.kind == "item" {
                     let mut f = InlineField::new(
                         format!("item-{key}"),
@@ -719,6 +731,12 @@ impl State {
                         ("unit", text(&r.facts, "unit")),
                         ("price", text(&r.facts, "default_price")),
                         ("tax", text(&r.facts, "tax_code")),
+                        ("tax_rate", text(&r.facts, "tax_rate")),
+                        ("currency_code", text(&r.facts, "currency_code")),
+                        ("reference", text(&r.facts, "reference")),
+                        ("valid_until", text(&r.facts, "valid_until")),
+                        ("subtotal", text(&r.facts, "subtotal")),
+                        ("tax_total", text(&r.facts, "tax_total")),
                         ("customer", text(&r.facts, "customer_code")),
                         ("status", &r.status),
                     ] {
@@ -956,3 +974,11 @@ fn posted(v: &Value) -> HashMap<String, String> {
         .take(810)
         .collect()
 }
+
+bilibi_ui::record_fields! { mod item_fields {
+ CODE:RecordField::new("code","Code"),NAME:RecordField::new("name","Name"),UNIT:RecordField::new("unit","Unit"),
+ PRICE:RecordField::new("default_price","Default price").slot("price"),TAX:RecordField::new("tax_code","Tax code").slot("tax"),RATE:RecordField::new("tax_rate","Tax rate (%)"),STATUS:RecordField::new("status","Status")
+}}
+bilibi_ui::record_fields! { mod document_fields {
+ CODE:RecordField::new("code","Number"),CUSTOMER:RecordField::new("customer_code","Customer code").slot("customer"),CURRENCY:RecordField::new("currency_code","Currency"),REFERENCE:RecordField::new("reference","Reference"),EXPIRY:RecordField::new("valid_until","Valid until"),NET:RecordField::new("subtotal","Subtotal"),TAX:RecordField::new("tax_total","Tax"),TOTAL:RecordField::new("total","Total"),STATUS:RecordField::new("status","Status")
+}}

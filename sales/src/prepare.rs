@@ -125,7 +125,7 @@ pub(crate) async fn prepare(
                 "Tax rate must be from 0 to 100 percent.",
             ));
         }
-        p.facts = json!({"name":required(v,"name",200)?,"unit":required(v,"unit",20)?,"default_price":decimal(v,"default_price",false)?.to_string(),"tax_code":required(v,"tax_code",50)?,"tax_rate":rate.to_string(),"active":v["active"].as_bool().unwrap_or(true)});
+        p.facts = json!({"name":required(v,"name",200)?,"unit":required(v,"unit",20)?,"default_price":decimal(v,"default_price",false)?.to_string(),"tax_code":required(v,"tax_code",50)?,"tax_rate":rate.to_string(),"active":v["active"].as_bool().unwrap_or_else(||p.old.as_ref().and_then(|r|r.facts["active"].as_bool()).unwrap_or(true))});
         p.target = "active".into();
         return Ok(p);
     }
@@ -163,6 +163,12 @@ pub(crate) async fn prepare(
         }
         p.target = to;
         return Ok(p);
+    }
+    if v["quotation_id"].as_i64().is_some() && v["quotation_number"].as_i64().is_some() {
+        return Err(invalid(
+            "quotation_id",
+            "Choose a quotation by its ID or its number, not both.",
+        ));
     }
     if kind == "order"
         && (v["quotation_id"].as_i64().is_some() || v["quotation_number"].as_i64().is_some())
