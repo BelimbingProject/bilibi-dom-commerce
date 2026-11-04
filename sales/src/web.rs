@@ -732,6 +732,7 @@ impl State {
                     ("name", "Name"),
                     ("unit", "Unit"),
                     ("default_price", "Default price"),
+                    ("currency_code", "Currency"),
                     ("tax_code", "Tax code"),
                     ("tax_rate", "Tax rate (%)"),
                 ]
@@ -768,7 +769,7 @@ impl State {
                     .version(record.revision)
                     .status(self.commits.get(key));
                     f.save_event = "update_item".into();
-                    f.editable = self.manage;
+                    f.editable = self.manage && key != "currency_code";
                     render(&InlineEdit { field: f })?
                 } else {
                     Html::text(text(&record.facts, key))
@@ -895,6 +896,16 @@ impl State {
                         ("status", &r.status),
                     ] {
                         row = row.slot(key, Html::text(value));
+                    }
+                    if self.kind == "item" {
+                        row = row.slot(
+                            "price",
+                            Html::text(&format!(
+                                "{} {}",
+                                text(&r.facts, "default_price"),
+                                text(&r.facts, "currency_code")
+                            )),
+                        );
                     }
                     row = row.slot(
                         "total",
@@ -1165,7 +1176,7 @@ fn posted(v: &Value) -> HashMap<String, String> {
 
 bilibi_ui::record_fields! { mod item_fields {
  CODE:bilibi_ui::RecordField::new("code","Code"),NAME:bilibi_ui::RecordField::new("name","Name"),UNIT:bilibi_ui::RecordField::new("unit","Unit"),
- PRICE:bilibi_ui::RecordField::new("default_price","Default price").slot("price"),TAX:bilibi_ui::RecordField::new("tax_code","Tax code").slot("tax"),RATE:bilibi_ui::RecordField::new("tax_rate","Tax rate (%)"),STATUS:bilibi_ui::RecordField::new("status","Status")
+ CURRENCY:bilibi_ui::RecordField::new("currency_code","Currency"),PRICE:bilibi_ui::RecordField::new("default_price","Default price").slot("price"),TAX:bilibi_ui::RecordField::new("tax_code","Tax code").slot("tax"),RATE:bilibi_ui::RecordField::new("tax_rate","Tax rate (%)"),STATUS:bilibi_ui::RecordField::new("status","Status")
 }}
 bilibi_ui::record_fields! { mod document_fields {
  ORDER:bilibi_ui::RecordField::new("order_number","Sales order number"),CODE:bilibi_ui::RecordField::new("code","Number"),CUSTOMER:bilibi_ui::RecordField::new("customer_code","Customer code").slot("customer"),CURRENCY:bilibi_ui::RecordField::new("currency_code","Currency"),REFERENCE:bilibi_ui::RecordField::new("reference","Reference"),EXPIRY:bilibi_ui::RecordField::new("valid_until","Valid until"),NET:bilibi_ui::RecordField::new("subtotal","Subtotal"),TAX:bilibi_ui::RecordField::new("tax_total","Tax"),TOTAL:bilibi_ui::RecordField::new("total","Total"),STATUS:bilibi_ui::RecordField::new("status","Status")
