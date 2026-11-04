@@ -32,7 +32,7 @@ Commerce declares two Base event types, each at **version 1**:
 
 Publication happens on the order's audited transaction. Refusal or publication failure rolls back the complete write. There is no Finance dependency, port, SQL reference or invoice write.
 
-Each event carries one line per part to stay within the Base event payload limits. The subject is `order:<id>` and the idempotency key is `revision:<revision>:line:<line_number>`. The Base event envelope supplies tenant, event type version, actor and event time. The payload contains:
+Each event carries one line per part to stay within the Base event payload limits. The subject is `order:<id>` and the idempotency key is `order:<id>:revision:<revision>:<status|confirmed>:line:<line_number>`. The Base event envelope supplies tenant, event type version, actor and event time. The payload contains:
 
 ```json
 {

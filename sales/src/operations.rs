@@ -114,7 +114,12 @@ impl WriteHandler for Write {
                     .ok_or(bilibi_database::Error::Internal)?;
                 let subject = format!("order:{}", record.id);
                 for (index, line) in lines.iter().enumerate() {
-                    let key = format!("revision:{}:line:{}", record.revision, index + 1);
+                    let key = format!(
+                        "order:{}:revision:{}:status:line:{}",
+                        record.id,
+                        record.revision,
+                        index + 1
+                    );
                     let payload = json!({"company_id":p.company,"order_id":record.id,"order_number":record.code,"revision":record.revision,"order_status":record.status,"quotation_id":record.facts["quotation_id"],"customer_kind":record.facts["customer_kind"],"customer_id":record.facts["customer_id"],"customer_code":record.facts["customer_code"],"currency_code":record.facts["currency_code"],"subtotal":record.facts["subtotal"],"tax_total":record.facts["tax_total"],"total":record.facts["total"],"part_index":index+1,"part_count":lines.len(),"lines":[line]});
                     services
                         .events
