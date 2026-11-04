@@ -3,7 +3,7 @@ use askama::Template;
 use bilibi_agent_api::page::{Call,PageContracts};
 use bilibi_database::{Error,Result};
 use bilibi_tenancy::Scope;
-use bilibi_ui::{*,page::*};
+use bilibi_ui::{*,page::{Page,PageRequest,PageFuture,PageBody,MountFuture,LiveState,LiveRequest,LiveFuture,LiveInput,LiveBody}};
 use serde_json::{json,Value};
 use std::{collections::{HashMap,BTreeMap},sync::{Arc,LazyLock}};
 
@@ -60,7 +60,7 @@ impl State {
   if self.kind=="item" {return [("code","Code"),("name","Name"),("unit","Unit"),("default_price","Default price"),("tax_code","Tax code"),("tax_rate","Tax rate (%)")].iter().map(|(k,l)|self.field(k,l)).collect();}
   let mut fields=vec![self.field("customer_kind","Customer type").kind(InputKind::Select).options(vec![Choice::new("Company","company"),Choice::new("Person","person")]),self.field("customer_code","Customer code").hint("Use the code from Core Companies or Contacts."),self.field("currency_code","Currency code"),self.field("reference","Reference")];
   if self.kind=="quotation" {fields.push(self.field("valid_until","Valid until").kind(InputKind::Date));}
-  if self.kind=="order" {fields.push(self.field("quotation_id","Accepted quotation number").hint("Leave blank to enter an order directly. A quotation replaces the customer and lines entered below."));}
+  if self.kind=="order" {fields.push(self.field("quotation_id","Accepted quotation ID").hint("Leave blank to enter an order directly. A quotation replaces the customer and lines entered below."));}
   fields
  }
  fn line_fields(&self)->Vec<Vec<Field>> {(0..self.line_count).map(|i|{
@@ -98,9 +98,10 @@ impl State {
    "clear-flash"=>self.flash=None,
    "new"=>{self.editing=true;self.form.clear();self.errors.clear();self.line_count=1;},
    "close"=>{self.editing=false;self.pending=None;},
-   "draft"|"add_line"=>{self.form=params::form_values(v,"form");if event=="add_line" && self.line_count<100 {self.line_count+=1;}},
+   "draft"=>{self.form=posted(v);},
+   "add_line"=>{if self.line_count<100 {self.line_count+=1;}},
    "create_item"|"create_quotation"|"create_order"=>{
-    self.form=params::form_values(v,"form");
+    self.form=posted(v);
     let key=match self.kind {"item"=>"commerce.sales.item.create","quotation"=>"commerce.sales.quotation.create",_=>"commerce.sales.order.create"};
     self.submit(r.scope,r.credential,event,key,self.input(r.scope)).await?;
    }
@@ -120,7 +121,7 @@ impl State {
      let input=json!({"company_id":r.scope.current_company().map_or(0,|c|c.get()),"id":record.id,"revision":record.revision,"status":status,"reason":reason});
      let key=if self.kind=="quotation" {"commerce.sales.quotation.transition"}else{"commerce.sales.order.transition"};
      let call=Call{scope:r.scope,credential:r.credential,service:PAGES,event,contract:key};
-     match self.contracts.preview(&call,input.clone()).await {Ok(_)=>self.pending=Some((event.into(),key.into(),input)),Err(e)=>self.flash=Some((StatusKind::Error,e.to_string()))};
+     match self.contracts.preview(&call,input.clone()).await {Ok(review) if review["valid"]==true=>self.pending=Some((event.into(),key.into(),input)),Ok(review)=>self.flash=Some((StatusKind::Error,format!("This change was refused: {}",review["results"]))),Err(e)=>self.flash=Some((StatusKind::Error,e.to_string()))};
     }
    }
    "confirm_action"=>{
@@ -163,7 +164,7 @@ impl State {
   let action_options=if self.kind=="quotation" {match self.record.as_ref().map(|r|r.status.as_str()){Some("draft")=>vec!["sent"],Some("sent")=>vec!["accepted","rejected","expired"],_=>vec![]}}else{match self.record.as_ref().map(|r|r.status.as_str()){Some("draft")=>if self.confirm{vec!["confirmed","cancelled"]}else{vec!["cancelled"]},Some("confirmed")=>vec!["cancelled"],_=>vec![]}};
   let action_fields=vec![Field::in_form("form","status").label("New status").kind(InputKind::Select).options(action_options.iter().map(|s|Choice::new(s,s)).collect()),Field::in_form("form","reason").label("Reason").hint("Required when rejecting a quotation or cancelling an order.")];
   let confirmation=if let Some((_,_,input))=&self.pending{render(&ConfirmDialog{id:"commerce-confirm",consequence:"Change this record?",detail:&format!("Set status to {}. {}",text(input,"status"),if text(input,"status")=="confirmed"{"Finance can use this confirmed order to prepare an invoice."}else{"The change stays in the status history."}),confirm:"Confirm",working:"Saving…",confirm_event:"confirm_action",cancel_event:"close"})?}else{Html::EMPTY};
-  render(&View{heading:self.heading(),kind:self.kind,record_id:self.id.map(|id|id.to_string()).unwrap_or_default(),back:path(self.kind),is_detail:self.id.is_some(),manage:self.manage,editing:self.editing,flash,fields:self.fields(),lines:self.line_fields(),line_count:self.line_count,body,detail,history,toolbar,pagination,action_fields,actions:self.manage&&!action_options.is_empty(),confirmation,errors:self.errors.values().flatten().cloned().collect()})
+  render(&View{variant:if self.id.is_some(){PageVariant::Detail}else{PageVariant::List},create_title:match self.kind{"item"=>"New product","quotation"=>"New quotation",_=>"New sales order"},create_event:match self.kind{"item"=>"create_item","quotation"=>"create_quotation",_=>"create_order"},status_event:if self.kind=="quotation"{"quotation_transition"}else{"order_transition"},heading:self.heading(),kind:self.kind,record_id:self.id.map(|id|id.to_string()).unwrap_or_default(),back:path(self.kind),is_detail:self.id.is_some(),manage:self.manage,editing:self.editing,flash,fields:self.fields(),lines:self.line_fields(),line_count:self.line_count,body,detail,history,toolbar,pagination,action_fields,actions:self.manage&&!action_options.is_empty(),confirmation,errors:self.errors.values().flatten().cloned().collect()})
  }
 }
 impl LiveState<Scope,Error> for State {
@@ -175,7 +176,9 @@ impl LiveState<Scope,Error> for State {
 }
 #[derive(Template)]
 #[template(path="sales.html")]
-struct View<'a>{heading:String,kind:&'a str,record_id:String,back:&'a str,is_detail:bool,manage:bool,editing:bool,flash:FlashMap<'a>,fields:Vec<Field>,lines:Vec<Vec<Field>>,line_count:usize,body:Html,detail:Html,history:Html,toolbar:Html,pagination:Html,action_fields:Vec<Field>,actions:bool,confirmation:Html,errors:Vec<String>}
+struct View<'a>{variant:PageVariant,create_title:&'a str,create_event:&'a str,status_event:&'a str,heading:String,kind:&'a str,record_id:String,back:&'a str,is_detail:bool,manage:bool,editing:bool,flash:FlashMap<'a>,fields:Vec<Field>,lines:Vec<Vec<Field>>,line_count:usize,body:Html,detail:Html,history:Html,toolbar:Html,pagination:Html,action_fields:Vec<Field>,actions:bool,confirmation:Html,errors:Vec<String>}
 #[derive(Template)]
 #[template(path="history.html")]
 struct History<'a>{rows:&'a [Value]}
+
+fn posted(v:&Value)->HashMap<String,String>{ v.as_object().into_iter().flatten().filter_map(|(k,v)|{let key=k.strip_prefix("form[")?.strip_suffix(']')?;let value=v.as_str()?;Some((key.to_owned(),value.chars().take(1024).collect()))}).take(810).collect() }

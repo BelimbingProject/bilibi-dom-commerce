@@ -4,7 +4,7 @@
 {% import "workspace.html" as workspace %}
 <div data-shared-ui>
 {% call feedback::flash_group(messages=flash) %}{% endcall %}
-{% call ui::page(id="commerce-sales", variant=if is_detail {bilibi_ui::PageVariant::Detail} else {bilibi_ui::PageVariant::List}) %}
+{% call ui::page(id="commerce-sales", variant=variant) %}
 {% if is_detail %}{% call workspace::announce(kind="commerce/sales",record_id=record_id) %}{% endcall %}{% endif %}
 {% call ui::header() %}{{ heading }}{% endcall %}
 {% if is_detail %}
@@ -13,7 +13,7 @@
 {% if kind != "item" %}{% call ui::card(id="commerce-lines",title="Lines") %}{{ body }}{% endcall %}{% endif %}
 {% if actions %}
 {% call ui::card(id="commerce-status",title="Change status") %}
-{% call forms::form(id="status-form",event=if kind == "quotation" {"quotation_transition"} else {"order_transition"}) %}
+{% call forms::form(id="status-form",event=status_event) %}
 {% call forms::fields(fields=action_fields) %}{% endcall %}
 {% call ui::button(button_type="submit") %}Review change{% endcall %}
 {% endcall %}{% endcall %}
@@ -24,17 +24,18 @@
 {{ toolbar }}{{ body }}{{ pagination }}
 {% endif %}
 {% if editing %}
-{% call ui::card(id="commerce-create",title=if kind == "item" {"New product"} else if kind == "quotation" {"New quotation"} else {"New sales order"}) %}
+{% call ui::card(id="commerce-create",title=create_title) %}
 {% for error in errors %}{% call feedback::alert(kind=bilibi_ui::StatusKind::Error) %}{{ error }}{% endcall %}{% endfor %}
-{% call forms::form(id="commerce-form",event="draft",change=true,submit_event=if kind == "item" {"create_item"} else if kind == "quotation" {"create_quotation"} else {"create_order"}) %}
+{% call forms::form(id="commerce-form",event="draft",change=true,submit_event=create_event) %}
 {% call forms::field_row(fields=fields) %}{% endcall %}
 {% if kind != "item" %}
 {% for row in lines %}
-{% call forms::section(labelledby=format!("line-heading-{}",loop.index),heading=format!("Line {}",loop.index),description="Choose a product and quantity, or enter all line details. Product lines use the catalog price, unit and tax.") %}
+{% let heading_id = "line-heading-{}"|format(loop.index) %}{% let line_heading = "Line {}"|format(loop.index) %}
+{% call forms::section(labelledby=heading_id,heading=line_heading,description="Choose a product and quantity, or enter all line details. Product lines use the catalog price, unit and tax.") %}
 {% call forms::field_row(fields=row) %}{% endcall %}
 {% endcall %}
 {% endfor %}
-{% if line_count < 100 %}{% call ui::button(event="add_line",button_type="submit") %}+ Line{% endcall %}{% endif %}
+{% if line_count < 100 %}{% call ui::button(event="add_line") %}+ Line{% endcall %}{% endif %}
 {% endif %}
 {% call ui::button(button_type="submit",variant=bilibi_ui::ButtonVariant::Primary) %}Save draft{% endcall %}
 {% call ui::button(event="close") %}Cancel{% endcall %}

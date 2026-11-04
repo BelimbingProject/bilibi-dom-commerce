@@ -19,7 +19,7 @@ fn decimal(v:&Value,k:&str,positive:bool)->Result<Decimal> {
  let d=Decimal::from_str(&s).map_err(|_|invalid(k,"Enter a decimal number."))?;
  if d.scale()>4 || d<Decimal::ZERO || (positive && d==Decimal::ZERO) || d>Decimal::from(999_999_999_i64) { return Err(invalid(k,"Enter a positive quantity or a nonnegative price, with up to four decimals.")); } Ok(d)
 }
-fn money(d:Decimal)->Decimal { d.round_dp_with_strategy(2,RoundingStrategy::MidpointAwayFromZero) }
+fn money(d:Decimal)->Decimal { let mut d=d.round_dp_with_strategy(2,RoundingStrategy::MidpointAwayFromZero);d.rescale(2);d }
 fn date(v:&Value,k:&str)->Result<String> {
  let s=required(v,k,10)?; if s.len()!=10 || jiff::civil::Date::from_str(&s).is_err() { return Err(invalid(k,"Enter a date as YYYY-MM-DD.")); } Ok(s)
 }
@@ -69,7 +69,7 @@ pub(crate) async fn prepare(c:&dyn OperationClient,scope:&Scope,v:&Value,action:
   let quote=store::get(c,scope.tenant(),co,"quotation",id).await?.ok_or(Error::NotFound)?;
   if quote.status!="accepted" {return Err(invalid("quotation_id","Choose an accepted quotation."));}
   if c.query_opt("SELECT id FROM commerce_sales_documents WHERE tenant_id=$1 AND company_id=$2 AND quotation_id=$3",&[&scope.tenant(),&co,&id]).await?.is_some() {return Err(invalid("quotation_id","A sales order already exists for this quotation."));}
-  p.facts=quote.facts;p.quotation=Some(id);return Ok(p);
+  p.facts=quote.facts;p.facts["quotation_id"]=json!(id);p.quotation=Some(id);return Ok(p);
  }
  let customer_kind=required(v,"customer_kind",20)?;
  if !["company","person"].contains(&customer_kind.as_str()) {return Err(invalid("customer_kind","Choose Company or Person."));}
