@@ -1,0 +1,6 @@
+{% import "components.html" as ui %}
+{% call ui::card(id="commerce-history",title="Status history") %}
+{% for row in rows %}
+{% call ui::card() %}{{ row["at"] }} · {{ row["from"] }} → {{ row["to"] }} · Account {{ row["user_id"] }}{% if !row["impersonator_id"].is_null() %} · Impersonated by {{ row["impersonator_id"] }}{% endif %} · {{ row["reason"] }}{% endcall %}
+{% endfor %}
+{% endcall %}
