@@ -11,6 +11,7 @@ use bilibi_tenancy::{PartyProofs, Scope};
 use serde_json::{json, Value};
 use std::sync::{Arc, OnceLock};
 
+pub(crate) const DELIVERED: &str = "commerce/sales.delivery_delivered";
 pub(crate) const CONFIRMED: &str = "commerce/sales.order_confirmed";
 pub(crate) const STATUS_CHANGED: &str = "commerce/sales.order_status_changed";
 struct Services {
@@ -107,6 +108,20 @@ impl WriteHandler for Write {
                 p.quotation,
             )
             .await?;
+            if record.kind == "delivery" && record.status == "delivered" && changed {
+                let services = SERVICES.get().ok_or(bilibi_database::Error::Internal)?;
+                let lines = record.facts["lines"]
+                    .as_array()
+                    .ok_or(bilibi_database::Error::Internal)?;
+                for (index, line) in lines.iter().enumerate() {
+                    services.events.record(tx, NewEvent {
+                        name: DELIVERED,
+                        subject: &format!("delivery:{}", record.id),
+                        key: &format!("delivery:{}:revision:{}:delivered:line:{}", record.id, record.revision, index+1),
+                        payload: json!({"company_id":p.company,"delivery_id":record.id,"delivery_number":record.code,"revision":record.revision,"status":record.status,"order_id":record.facts["order_id"],"order_number":record.facts["order_number"],"order_revision":record.facts["order_revision"],"customer_kind":record.facts["customer_kind"],"customer_id":record.facts["customer_id"],"customer_code":record.facts["customer_code"],"reference":record.facts["reference"],"part_index":index+1,"part_count":lines.len(),"lines":[line]}),
+                    }).await?;
+                }
+            }
             if record.kind == "order" && changed {
                 let services = SERVICES.get().ok_or(bilibi_database::Error::Internal)?;
                 let lines = record.facts["lines"]
@@ -161,6 +176,17 @@ impl WriteHandler for Write {
 // Base Agent API accepts its documented schema dialect, not full JSON Schema.
 // Object fields are closed by default; cross-field and array bounds live in prepare.
 fn schema(action: &str) -> Value {
+    if action == "delivery.create" {
+        return json!({"type":"object","required":["company_id"],"properties":{
+            "company_id":{"type":"integer","minimum":1},"order_id":{"type":"integer","minimum":1},"order_number":{"type":"integer","minimum":1},"reference":{"type":"string","maxLength":200},
+            "lines":{"type":"array","items":{"type":"object","required":["order_line_number","quantity"],"properties":{"order_line_number":{"type":"integer","minimum":1},"quantity":{"type":"string","maxLength":30}}}}
+        }});
+    }
+    if action == "delivery.transition" {
+        return json!({"type":"object","required":["company_id","id","revision","status"],"properties":{
+            "company_id":{"type":"integer","minimum":1},"id":{"type":"integer","minimum":1},"revision":{"type":"integer","minimum":1},"status":{"type":"string","enum":["shipped","delivered","cancelled"]},"reason":{"type":"string","maxLength":500}
+        }});
+    }
     let line = json!({"type":"object","properties":{"item_id":{"type":"integer","minimum":1},"item_code":{"type":"string","maxLength":50},"description":{"type":"string","maxLength":500},"quantity":{"type":"string","maxLength":30},"unit":{"type":"string","maxLength":20},"unit_price":{"type":"string","maxLength":30},"tax_code":{"type":"string","maxLength":50},"tax_rate":{"type":"string","maxLength":30}}});
     let mut schema = json!({"type":"object","required":["company_id"],"properties":{
  "company_id":{"type":"integer","minimum":1},"id":{"type":"integer","minimum":1},"revision":{"type":"integer","minimum":1},
@@ -265,6 +291,8 @@ fn schema(action: &str) -> Value {
 macro_rules! op {($key:literal,$title:literal,$action:literal)=>{Operation{key:$key,title:$title,summary:$title,keywords:&["sales","commerce","quotation","order","catalog"],capability:MANAGE,input:||schema($action),output:||json!({"type":"object"}),handler:Handler::SafeWrite(&Write($action)),channels:Channels::Every,step_up:&[]}};}
 inventory::submit! {Contribution::new(DEFINITIONS,"commerce/sales.operations",Provenance{module:MODULE,source:file!(),line:line!()},&Definitions{
 operations:&[
+op!("commerce.sales.delivery.create","Create a delivery order","delivery.create"),
+op!("commerce.sales.delivery.transition","Ship, deliver or cancel a delivery order","delivery.transition"),
 op!("commerce.sales.item.create","Create a catalog item","item.create"),
 op!("commerce.sales.item.update","Update a catalog item","item.update"),
 op!("commerce.sales.quotation.create","Create a quotation","quotation.create"),

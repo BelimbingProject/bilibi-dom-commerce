@@ -9,6 +9,8 @@ publish = false
 [dependencies]
 askama.workspace = true
 bilibi-agent-api.workspace = true
+bilibi-artifacts.workspace = true
+bilibi-party-ids.workspace = true
 bilibi-authz.workspace = true
 bilibi-company.workspace = true
 bilibi-database.workspace = true

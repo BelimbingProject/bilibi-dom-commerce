@@ -19,7 +19,7 @@ pub(crate) fn integer(v: &Value, k: &str) -> Result<i64> {
         .filter(|i| *i > 0)
         .ok_or_else(|| invalid(k, "Choose a valid record."))
 }
-fn required(v: &Value, k: &str, max: usize) -> Result<String> {
+pub(crate) fn required(v: &Value, k: &str, max: usize) -> Result<String> {
     let s = text(v, k);
     if s.is_empty() {
         return Err(invalid(k, &format!("Enter a {}.", k.replace('_', " "))));
@@ -32,7 +32,7 @@ fn required(v: &Value, k: &str, max: usize) -> Result<String> {
     }
     Ok(s.into())
 }
-fn decimal(v: &Value, k: &str, positive: bool) -> Result<Decimal> {
+pub(crate) fn decimal(v: &Value, k: &str, positive: bool) -> Result<Decimal> {
     let s = required(v, k, 30)?;
     let d = Decimal::from_str(&s).map_err(|_| invalid(k, "Enter a decimal number."))?;
     if d.scale() > 4
@@ -95,6 +95,8 @@ pub(crate) async fn prepare(
         "item"
     } else if action.starts_with("quotation") {
         "quotation"
+    } else if action.starts_with("delivery") {
+        "delivery"
     } else {
         "order"
     };
@@ -118,6 +120,9 @@ pub(crate) async fn prepare(
         p.code = old.code.clone();
         p.facts = old.facts.clone();
         p.old = Some(old);
+    }
+    if kind == "delivery" {
+        return crate::delivery::prepare(c, scope, v, p).await;
     }
     if kind == "item" {
         if p.old.is_none() {
@@ -158,6 +163,12 @@ pub(crate) async fn prepare(
                 "valid_until",
                 "This quotation has expired. Create a new quotation.",
             ));
+        }
+        if kind == "order"
+            && to == "cancelled"
+            && crate::delivery::has_active(c, scope, co, old.id).await?
+        {
+            return Err(invalid("status", "Cancel draft deliveries first. An order with shipped or delivered quantities cannot be cancelled."));
         }
         p.reason = if to == "cancelled" || to == "rejected" {
             required(v, "reason", 500)?

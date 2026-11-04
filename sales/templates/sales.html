@@ -9,6 +9,8 @@
 {% call ui::header() %}{{ heading }}{% endcall %}
 {% if is_detail %}
 {% call ui::back_link(href=back) %}{% endcall %}
+{% if kind == "delivery" %}{% let pdf_url = "/commerce/delivery-orders/{}/pdf"|format(record_id) %}{% call ui::action_link(href=pdf_url) %}Print delivery order{% endcall %}{% endif %}
+{% if manage && !delivery_link.is_empty() %}{% call ui::action_link(href=delivery_link) %}+ Delivery order{% endcall %}{% endif %}
 {% call ui::card(id="commerce-record",title="Details") %}{{ detail }}{% endcall %}
 {% if kind != "item" %}{% call ui::card(id="commerce-lines",title="Lines") %}{{ body }}{% endcall %}{% endif %}
 {% if actions %}
@@ -20,7 +22,7 @@
 {% endif %}
 {{ history }}
 {% else %}
-{% if manage %}{% call ui::button(event="new",button_type="button",variant=bilibi_ui::ButtonVariant::Primary) %}{% if kind == "item" %}+ Product{% elif kind == "quotation" %}+ Quotation{% else %}+ Sales order{% endif %}{% endcall %}{% endif %}
+{% if manage %}{% call ui::button(event="new",button_type="button",variant=bilibi_ui::ButtonVariant::Primary) %}{% if kind == "item" %}+ Product{% elif kind == "quotation" %}+ Quotation{% elif kind == "delivery" %}+ Delivery order{% else %}+ Sales order{% endif %}{% endcall %}{% endif %}
 {{ toolbar }}{{ body }}{{ pagination }}
 {% endif %}
 {% if editing %}
@@ -28,16 +30,19 @@
 {% for error in errors %}{% call feedback::alert(kind=bilibi_ui::StatusKind::Error) %}{{ error }}{% endcall %}{% endfor %}
 {% call forms::form(id="commerce-form",event=create_event) %}
 {% call forms::field_row(fields=fields) %}{% endcall %}
+{% if kind == "delivery" %}{% call ui::button(button_type="submit",name="intent",value="load_order") %}Load order lines{% endcall %}{% endif %}
 {% if kind != "item" %}
 {% for row in lines %}
 {% let heading_id = "line-heading-{}"|format(loop.index) %}{% let line_heading = "Line {}"|format(loop.index) %}
-{% call forms::section(labelledby=heading_id,heading=line_heading,description="Enter a product code and quantity, or enter all line details. Product lines use the catalog price, unit and tax.") %}
+{% let line_description = "Enter a product code and quantity, or enter all line details. Product lines use the catalog price, unit and tax." %}
+{% let line_description = if kind == "delivery" { "Choose the quantity for this delivery." } else { line_description } %}
+{% call forms::section(labelledby=heading_id,heading=line_heading,description=line_description) %}
 {% call forms::field_row(fields=row) %}{% endcall %}
 {% endcall %}
 {% endfor %}
-{% if line_count < 100 %}{% call ui::button(button_type="submit",name="intent",value="add_line") %}+ Line{% endcall %}{% endif %}
+{% if kind != "delivery" && line_count < 100 %}{% call ui::button(button_type="submit",name="intent",value="add_line") %}+ Line{% endcall %}{% endif %}
 {% endif %}
-{% call ui::button(button_type="submit",variant=bilibi_ui::ButtonVariant::Primary) %}{% if kind == "item" %}Create product{% else %}Save draft{% endif %}{% endcall %}
+{% if kind != "delivery" || source_loaded %}{% call ui::button(button_type="submit",variant=bilibi_ui::ButtonVariant::Primary) %}{% if kind == "item" %}Create product{% else %}Save draft{% endif %}{% endcall %}{% endif %}
 {% call ui::button(event="close",button_type="button") %}Cancel{% endcall %}
 {% endcall %}
 {% endcall %}
