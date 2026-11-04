@@ -703,6 +703,7 @@ impl State {
             }
             "draft" => {
                 self.form = posted(v);
+                self.errors.clear();
             }
             "add_line" => {
                 if self.line_count < 100 {

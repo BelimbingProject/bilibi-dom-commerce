@@ -329,7 +329,11 @@ pub(crate) async fn prepare(
                 .parse::<i64>()
                 .map_err(|_| bilibi_database::Error::Internal)?;
             product_id = Some(id);
-            let sql = c.transaction().ok_or(bilibi_database::Error::Internal)?;
+            let sql = if let Some(tx) = tx {
+                tx.sql()
+            } else {
+                c.transaction().ok_or(bilibi_database::Error::Internal)?
+            };
             let product = products.get(sql, scope, id).await?;
             let price = products.price(sql, scope, id, co, &currency.code, on).await?
                 .ok_or_else(|| invalid("lines", "This product has no price for the selling company, currency and pricing date. Add a dated selling price in Products."))?;
