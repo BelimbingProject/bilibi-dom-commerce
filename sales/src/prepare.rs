@@ -47,9 +47,9 @@ pub(crate) fn decimal(v: &Value, k: &str, positive: bool) -> Result<Decimal> {
     }
     Ok(d)
 }
-fn money(d: Decimal) -> Decimal {
-    let mut d = d.round_dp_with_strategy(2, RoundingStrategy::MidpointAwayFromZero);
-    d.rescale(2);
+fn money(d: Decimal, places: u32) -> Decimal {
+    let mut d = d.round_dp_with_strategy(places, RoundingStrategy::MidpointAwayFromZero);
+    d.rescale(places);
     d
 }
 fn date(v: &Value, k: &str) -> Result<String> {
@@ -82,6 +82,33 @@ impl Prepared {
     }
 }
 
+// Preview borrows the operation's transaction; commit additionally locks the
+// enabled assignment through Core Currency, keeping a concurrent disable out.
+async fn currency(
+    c: &dyn OperationClient,
+    scope: &Scope,
+    code: &str,
+    currencies: &bilibi_currency::Currencies,
+    tx: Option<&bilibi_database::MutationTransaction<'_>>,
+) -> Result<bilibi_currency::Currency> {
+    if let Some(tx) = tx {
+        return currencies
+            .check(tx, scope, code)
+            .await?
+            .map_err(|e| invalid("currency_code", e.message()));
+    }
+    let sql = c.transaction().ok_or(bilibi_database::Error::Internal)?;
+    let currency = currencies
+        .get(sql, scope, code)
+        .await?
+        .ok_or_else(|| invalid("currency_code", "Choose a known currency."))?;
+    if currency.withdrawn || !currency.enabled {
+        return Err(invalid("currency_code", "Choose an enabled currency."));
+    }
+    Ok(currency)
+}
+
+#[allow(clippy::too_many_arguments)] // Services and the caller's transaction stay explicit.
 pub(crate) async fn prepare(
     c: &dyn OperationClient,
     scope: &Scope,
@@ -89,6 +116,8 @@ pub(crate) async fn prepare(
     action: &str,
     records: &Records,
     parties: &PartyProofs,
+    currencies: &bilibi_currency::Currencies,
+    tx: Option<&bilibi_database::MutationTransaction<'_>>,
 ) -> Result<Prepared> {
     let co = integer(v, "company_id")?;
     let kind = if action.starts_with("item") {
@@ -136,7 +165,8 @@ pub(crate) async fn prepare(
                 "Tax rate must be from 0 to 100 percent.",
             ));
         }
-        p.facts = json!({"name":required(v,"name",200)?,"unit":required(v,"unit",20)?,"default_price":decimal(v,"default_price",false)?.to_string(),"tax_code":required(v,"tax_code",50)?,"tax_rate":rate.to_string(),"active":v["active"].as_bool().unwrap_or_else(||p.old.as_ref().and_then(|r|r.facts["active"].as_bool()).unwrap_or(true))});
+        let currency = currency(c, scope, text(v, "currency_code"), currencies, tx).await?;
+        p.facts = json!({"currency_code":currency.code,"name":required(v,"name",200)?,"unit":required(v,"unit",20)?,"default_price":money(decimal(v,"default_price",false)?,currency.minor_units).to_string(),"tax_code":required(v,"tax_code",50)?,"tax_rate":rate.to_string(),"active":v["active"].as_bool().unwrap_or_else(||p.old.as_ref().and_then(|r|r.facts["active"].as_bool()).unwrap_or(true))});
         p.target = "active".into();
         return Ok(p);
     }
@@ -266,19 +296,22 @@ pub(crate) async fn prepare(
         if text(v, "reference").chars().count() > 200 {
             return Err(invalid("reference", "Use up to 200 characters."));
         }
+        currency(
+            c,
+            scope,
+            text(&quote.facts, "currency_code"),
+            currencies,
+            tx,
+        )
+        .await?;
         p.facts = quote.facts;
         p.facts["reference"] = json!(text(v, "reference"));
         p.facts["quotation_id"] = json!(id);
         p.quotation = Some(id);
         return Ok(p);
     }
-    let currency = required(v, "currency_code", 3)?;
-    if currency.len() != 3 || !currency.bytes().all(|b| b.is_ascii_uppercase()) {
-        return Err(invalid(
-            "currency_code",
-            "Enter a three-letter currency code.",
-        ));
-    }
+    let currency = currency(c, scope, text(v, "currency_code"), currencies, tx).await?;
+    let places = currency.minor_units;
     let input = v["lines"]
         .as_array()
         .filter(|a| !a.is_empty() && a.len() <= 100)
@@ -302,11 +335,17 @@ pub(crate) async fn prepare(
             if item.facts["active"] == false {
                 return Err(invalid("lines", "Choose active catalog items."));
             }
+            if text(&item.facts, "currency_code") != currency.code {
+                return Err(invalid(
+                    "lines",
+                    "Choose catalog items in the document currency.",
+                ));
+            }
             source = json!({"description":item.facts["name"],"unit":item.facts["unit"],"unit_price":item.facts["default_price"],"tax_code":item.facts["tax_code"],"tax_rate":item.facts["tax_rate"],"quantity":line["quantity"]});
             item_code = json!(item.code);
         }
         let quantity = decimal(&source, "quantity", true)?;
-        let price = decimal(&source, "unit_price", false)?;
+        let price = money(decimal(&source, "unit_price", false)?, places);
         let rate = decimal(&source, "tax_rate", false)?;
         if rate > Decimal::from(100) {
             return Err(invalid(
@@ -318,8 +357,9 @@ pub(crate) async fn prepare(
             quantity
                 .checked_mul(price)
                 .ok_or_else(|| invalid("lines", "The line amount is too large."))?,
+            places,
         );
-        let tax = money(net * rate / Decimal::from(100));
+        let tax = money(net * rate / Decimal::from(100), places);
         subtotal += net;
         tax_total += tax;
         lines.push(json!({"line_number":i+1,"item_id":catalog_id,"item_code":item_code,"description":required(&source,"description",500)?,"unit":required(&source,"unit",20)?,"quantity":quantity.to_string(),"unit_price":price.to_string(),"tax_code":required(&source,"tax_code",50)?,"tax_rate":rate.to_string(),"subtotal":net.to_string(),"tax_total":tax.to_string(),"total":(net+tax).to_string()}));
@@ -333,7 +373,7 @@ pub(crate) async fn prepare(
     } else {
         None
     };
-    p.facts = json!({"customer_kind":customer_kind,"customer_id":identity.record_id(),"customer_code":customer_code,"currency_code":currency,"valid_until":valid_until,"reference":text(v,"reference"),"lines":lines,"subtotal":money(subtotal).to_string(),"tax_total":money(tax_total).to_string(),"total":money(subtotal+tax_total).to_string()});
+    p.facts = json!({"customer_kind":customer_kind,"customer_id":identity.record_id(),"customer_code":customer_code,"currency_code":currency.code,"valid_until":valid_until,"reference":text(v,"reference"),"lines":lines,"subtotal":money(subtotal,places).to_string(),"tax_total":money(tax_total,places).to_string(),"total":money(subtotal+tax_total,places).to_string()});
     if text(v, "reference").chars().count() > 200 {
         return Err(invalid("reference", "Use up to 200 characters."));
     }

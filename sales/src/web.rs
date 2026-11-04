@@ -20,6 +20,7 @@ use std::{
 
 pub(crate) struct Pages {
     sales: Arc<Sales>,
+    currencies: Arc<bilibi_currency::Currencies>,
     contracts: Arc<PageContracts>,
     views: Arc<PageViews>,
     display: Arc<DisplayPolicy>,
@@ -32,9 +33,11 @@ impl Pages {
         views: Arc<PageViews>,
         display: Arc<DisplayPolicy>,
         locales: Arc<bilibi_locale::Locales>,
+        currencies: Arc<bilibi_currency::Currencies>,
     ) -> Self {
         Self {
             sales,
+            currencies,
             contracts,
             views,
             display,
@@ -123,7 +126,9 @@ impl Page<Scope, Error> for Pages {
 }
 struct State {
     sales: Arc<Sales>,
+    currencies: Arc<bilibi_currency::Currencies>,
     contracts: Arc<PageContracts>,
+    currency_choices: Vec<Choice>,
     kind: &'static str,
     id: Option<i64>,
     framed: bool,
@@ -186,6 +191,8 @@ impl State {
         };
         Ok(Self {
             sales: p.sales.clone(),
+            currencies: p.currencies.clone(),
+            currency_choices: Vec::new(),
             contracts: p.contracts.clone(),
             kind: k,
             id,
@@ -257,6 +264,7 @@ impl State {
         self.confirm = crate::authorize(&**c, s, company, CONFIRM).await.is_ok();
         let locale = self.locales.resolve(&**c, s, None).await?.locale;
         self.display = self.display_policy.display(&**c, s, None, locale).await?;
+        self.currency_choices = self.currencies.choices(&**c, s).await?;
         drop(c);
         if !self.columns_open {
             self.columns.from_params(s, &self.column_params).await?;
@@ -383,7 +391,6 @@ impl State {
                 ]),
             self.field("customer_code", "Customer code")
                 .hint("Use the code from Core Companies or Contacts."),
-            self.field("currency_code", "Currency code"),
             self.field("reference", "Reference"),
         ];
         if self.kind == "quotation" {
@@ -725,6 +732,7 @@ impl State {
                     ("name", "Name"),
                     ("unit", "Unit"),
                     ("default_price", "Default price"),
+                    ("currency_code", "Currency"),
                     ("tax_code", "Tax code"),
                     ("tax_rate", "Tax rate (%)"),
                 ]
@@ -761,7 +769,7 @@ impl State {
                     .version(record.revision)
                     .status(self.commits.get(key));
                     f.save_event = "update_item".into();
-                    f.editable = self.manage;
+                    f.editable = self.manage && key != "currency_code";
                     render(&InlineEdit { field: f })?
                 } else {
                     Html::text(text(&record.facts, key))
@@ -888,6 +896,16 @@ impl State {
                         ("status", &r.status),
                     ] {
                         row = row.slot(key, Html::text(value));
+                    }
+                    if self.kind == "item" {
+                        row = row.slot(
+                            "price",
+                            Html::text(&format!(
+                                "{} {}",
+                                text(&r.facts, "default_price"),
+                                text(&r.facts, "currency_code")
+                            )),
+                        );
                     }
                     row = row.slot(
                         "total",
@@ -1041,6 +1059,16 @@ impl State {
             editing: self.editing,
             flash,
             fields: self.fields(),
+            currency: Combobox::new("form-currency_code", "form[currency_code]")
+                .label("Currency")
+                .options(self.currency_choices.clone())
+                .value(self.form.get("currency_code").cloned().unwrap_or_default())
+                .errors(
+                    self.errors
+                        .get("currency_code")
+                        .cloned()
+                        .unwrap_or_default(),
+                ),
             lines: self.line_fields(),
             line_description: if self.kind == "delivery" {
                 "Choose the quantity for this delivery."
@@ -1105,6 +1133,7 @@ struct View<'a> {
     editing: bool,
     flash: FlashMap<'a>,
     fields: Vec<Field>,
+    currency: Combobox,
     lines: Vec<Vec<Field>>,
     line_count: usize,
     line_description: &'a str,
@@ -1147,7 +1176,7 @@ fn posted(v: &Value) -> HashMap<String, String> {
 
 bilibi_ui::record_fields! { mod item_fields {
  CODE:bilibi_ui::RecordField::new("code","Code"),NAME:bilibi_ui::RecordField::new("name","Name"),UNIT:bilibi_ui::RecordField::new("unit","Unit"),
- PRICE:bilibi_ui::RecordField::new("default_price","Default price").slot("price"),TAX:bilibi_ui::RecordField::new("tax_code","Tax code").slot("tax"),RATE:bilibi_ui::RecordField::new("tax_rate","Tax rate (%)"),STATUS:bilibi_ui::RecordField::new("status","Status")
+ CURRENCY:bilibi_ui::RecordField::new("currency_code","Currency"),PRICE:bilibi_ui::RecordField::new("default_price","Default price").slot("price"),TAX:bilibi_ui::RecordField::new("tax_code","Tax code").slot("tax"),RATE:bilibi_ui::RecordField::new("tax_rate","Tax rate (%)"),STATUS:bilibi_ui::RecordField::new("status","Status")
 }}
 bilibi_ui::record_fields! { mod document_fields {
  ORDER:bilibi_ui::RecordField::new("order_number","Sales order number"),CODE:bilibi_ui::RecordField::new("code","Number"),CUSTOMER:bilibi_ui::RecordField::new("customer_code","Customer code").slot("customer"),CURRENCY:bilibi_ui::RecordField::new("currency_code","Currency"),REFERENCE:bilibi_ui::RecordField::new("reference","Reference"),EXPIRY:bilibi_ui::RecordField::new("valid_until","Valid until"),NET:bilibi_ui::RecordField::new("subtotal","Subtotal"),TAX:bilibi_ui::RecordField::new("tax_total","Tax"),TOTAL:bilibi_ui::RecordField::new("total","Total"),STATUS:bilibi_ui::RecordField::new("status","Status")
