@@ -361,11 +361,6 @@ impl State {
             .value(self.form.get(key).cloned().unwrap_or_default())
             .errors(self.errors.get(key).cloned().unwrap_or_default())
     }
-    fn currency_field(&self) -> Field {
-        self.field("currency_code", "Currency")
-            .kind(InputKind::Select)
-            .options(self.currency_choices.clone())
-    }
     fn fields(&self) -> Vec<Field> {
         if self.kind == "delivery" {
             return vec![
@@ -375,7 +370,7 @@ impl State {
             ];
         }
         if self.kind == "item" {
-            let mut fields: Vec<Field> = [
+            return [
                 ("code", "Code"),
                 ("name", "Name"),
                 ("unit", "Unit"),
@@ -386,8 +381,6 @@ impl State {
             .iter()
             .map(|(k, l)| self.field(k, l))
             .collect();
-            fields.push(self.currency_field());
-            return fields;
         }
         let mut fields = vec![
             self.field("customer_kind", "Customer type")
@@ -398,7 +391,6 @@ impl State {
                 ]),
             self.field("customer_code", "Customer code")
                 .hint("Use the code from Core Companies or Contacts."),
-            self.currency_field(),
             self.field("reference", "Reference"),
         ];
         if self.kind == "quotation" {
@@ -1056,6 +1048,16 @@ impl State {
             editing: self.editing,
             flash,
             fields: self.fields(),
+            currency: Combobox::new("form-currency_code", "form[currency_code]")
+                .label("Currency")
+                .options(self.currency_choices.clone())
+                .value(self.form.get("currency_code").cloned().unwrap_or_default())
+                .errors(
+                    self.errors
+                        .get("currency_code")
+                        .cloned()
+                        .unwrap_or_default(),
+                ),
             lines: self.line_fields(),
             line_description: if self.kind == "delivery" {
                 "Choose the quantity for this delivery."
@@ -1120,6 +1122,7 @@ struct View<'a> {
     editing: bool,
     flash: FlashMap<'a>,
     fields: Vec<Field>,
+    currency: Combobox,
     lines: Vec<Vec<Field>>,
     line_count: usize,
     line_description: &'a str,
