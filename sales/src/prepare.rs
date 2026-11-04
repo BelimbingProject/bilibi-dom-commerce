@@ -1,11 +1,11 @@
 //! All business validation and exact arithmetic live here, shared by preview
 //! and commit. Product references resolve under the company lock.
-use crate::{Record, store};
+use crate::{store, Record};
 use bilibi_agent_api::{Error, OperationClient, Result};
 use bilibi_records::Records;
 use bilibi_tenancy::{PartyProofs, Scope};
 use rust_decimal::{Decimal, RoundingStrategy};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::{collections::BTreeMap, str::FromStr};
 
 pub(crate) fn invalid(field: &str, message: &str) -> Error {
@@ -351,7 +351,7 @@ pub(crate) async fn prepare(
         let tax = money(net * rate / Decimal::from(100), places);
         subtotal += net;
         tax_total += tax;
-        lines.push(json!({"line_number":i+1,"product_id":product_id,"product_code":product_code,"description":required(&source,"description",500)?,"unit":required(&source,"unit",20)?,"quantity":quantity.to_string(),"unit_price":price.to_string(),"tax_code":required(&source,"tax_code",50)?,"tax_rate":rate.to_string(),"subtotal":net.to_string(),"tax_total":tax.to_string(),"total":(net+tax).to_string()}));
+        lines.push(json!({"line_number":i+1,"product_id":product_id,"product_code":product_code,"description":required(&source,"description",500)?,"unit":required(&source,"unit",80)?,"quantity":quantity.to_string(),"unit_price":price.to_string(),"tax_code":required(&source,"tax_code",50)?,"tax_rate":rate.to_string(),"subtotal":net.to_string(),"tax_total":tax.to_string(),"total":(net+tax).to_string()}));
     }
     let valid_until = if kind == "quotation" {
         let d = date(v, "valid_until")?;

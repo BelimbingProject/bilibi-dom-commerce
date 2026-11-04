@@ -1,4 +1,4 @@
-use crate::{CONFIRM, MANAGE, Record, Sales, VIEW, contributions::PAGES, prepare::text};
+use crate::{contributions::PAGES, prepare::text, Record, Sales, CONFIRM, MANAGE, VIEW};
 use askama::Template;
 use bilibi_agent_api::page::{Call, PageContracts};
 use bilibi_database::{Error, Result};
@@ -12,7 +12,7 @@ use bilibi_ui::{
     },
     *,
 };
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::{
     collections::{BTreeMap, HashMap},
     sync::{Arc, LazyLock},
@@ -29,6 +29,7 @@ pub(crate) struct Pages {
     locales: Arc<bilibi_locale::Locales>,
 }
 impl Pages {
+    #[allow(clippy::too_many_arguments)] // Explicit owner services for the shared page contracts.
     pub fn new(
         sales: Arc<Sales>,
         contracts: Arc<PageContracts>,
@@ -524,12 +525,11 @@ impl State {
             }
         }
         if self.kind == "delivery" {
-            v["order_number"] = json!(
-                self.form
-                    .get("order_number")
-                    .and_then(|v| v.parse::<i64>().ok())
-                    .unwrap_or(0)
-            );
+            v["order_number"] = json!(self
+                .form
+                .get("order_number")
+                .and_then(|v| v.parse::<i64>().ok())
+                .unwrap_or(0));
             let lines = (0..self.line_count)
                 .filter_map(|i| {
                     let quantity = self.form.get(&format!("line_{i}_quantity"))?.trim();
@@ -563,23 +563,21 @@ impl State {
                         "tax_code",
                         "tax_rate",
                     ] {
-                        line[k] = json!(
-                            self.form
-                                .get(&format!("line_{i}_{k}"))
-                                .cloned()
-                                .unwrap_or_default()
-                        );
+                        line[k] = json!(self
+                            .form
+                            .get(&format!("line_{i}_{k}"))
+                            .cloned()
+                            .unwrap_or_default());
                     }
                     if let Some(code) = self
                         .form
                         .get(&format!("line_{i}_product"))
                         .filter(|s| !s.is_empty())
                     {
-                        line["product_id"] = json!(
-                            code.strip_prefix("product:")
-                                .and_then(|id| id.parse::<i64>().ok())
-                                .unwrap_or(0)
-                        );
+                        line["product_id"] = json!(code
+                            .strip_prefix("product:")
+                            .and_then(|id| id.parse::<i64>().ok())
+                            .unwrap_or(0));
                     }
                     if text(&line, "description").is_empty()
                         && line["product_id"].is_null()
@@ -954,12 +952,8 @@ impl State {
                     );
                     for (key, value) in [
                         ("order", text(&r.facts, "order_number")),
-                        ("name", text(&r.facts, "name")),
-                        ("unit", text(&r.facts, "unit")),
-                        ("price", text(&r.facts, "default_price")),
-                        ("tax", text(&r.facts, "tax_code")),
-                        ("tax_rate", text(&r.facts, "tax_rate")),
                         ("currency_code", text(&r.facts, "currency_code")),
+                        ("price_on", text(&r.facts, "price_on")),
                         ("reference", text(&r.facts, "reference")),
                         ("valid_until", text(&r.facts, "valid_until")),
                         ("subtotal", text(&r.facts, "subtotal")),

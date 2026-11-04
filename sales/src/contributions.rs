@@ -1,13 +1,13 @@
-use crate::{CONFIRM, MANAGE, MODULE, SERVICE, Sales, VIEW};
-use bilibi_authz::{CapabilityDefinition as C, RoleDefinition, VOCABULARY, VocabularyContribution};
+use crate::{Sales, CONFIRM, MANAGE, MODULE, SERVICE, VIEW};
+use bilibi_authz::{CapabilityDefinition as C, RoleDefinition, VocabularyContribution, VOCABULARY};
 use bilibi_database::Db;
-use bilibi_events::{EVENTS, EventType, Events};
+use bilibi_events::{EventType, Events, EVENTS};
 use bilibi_menu::{MenuItem, Requirement};
 use bilibi_module_registry::{
-    Contribution, Layer, Module, Provenance, Service,
     contributions::{
-        Access, CompanyScope, Method, PAGE_WRITES, PageWrites, Pending, ROUTES, Route,
+        Access, CompanyScope, Method, PageWrites, Pending, Route, PAGE_WRITES, ROUTES,
     },
+    Contribution, Layer, Module, Provenance, Service,
 };
 use bilibi_tenancy::Scope;
 use bilibi_ui::page::PageService;

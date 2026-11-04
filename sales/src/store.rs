@@ -2,7 +2,7 @@ use crate::Record;
 use bilibi_agent_api::OperationClient;
 use bilibi_database::{Change, MutationTransaction, Result};
 use bilibi_tenancy::Scope;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use tokio_postgres::Row;
 
 fn row(r: &Row, kind: &str) -> Result<Record> {

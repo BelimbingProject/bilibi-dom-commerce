@@ -1,14 +1,14 @@
-use crate::{CONFIRM, MANAGE, MODULE, prepare, store};
+use crate::{prepare, store, CONFIRM, MANAGE, MODULE};
 use bilibi_agent_api::{
-    Channels, DEFINITIONS, Definitions, Error, Handler, Operation, OperationClient,
-    OperationFuture, WriteHandler,
+    Channels, Definitions, Error, Handler, Operation, OperationClient, OperationFuture,
+    WriteHandler, DEFINITIONS,
 };
 use bilibi_database::MutationTransaction;
 use bilibi_events::{Events, NewEvent};
 use bilibi_module_registry::{Contribution, Provenance};
 use bilibi_records::Records;
 use bilibi_tenancy::{PartyProofs, Scope};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::sync::{Arc, OnceLock};
 
 pub(crate) const DELIVERED: &str = "commerce/sales.delivery_delivered";
@@ -205,7 +205,7 @@ fn schema(action: &str) -> Value {
             "company_id":{"type":"integer","minimum":1},"id":{"type":"integer","minimum":1},"revision":{"type":"integer","minimum":1},"status":{"type":"string","enum":["shipped","delivered","cancelled"]},"reason":{"type":"string","maxLength":500}
         }});
     }
-    let line = json!({"type":"object","properties":{"product_id":{"type":"integer","minimum":1},"description":{"type":"string","maxLength":500},"quantity":{"type":"string","maxLength":30},"unit":{"type":"string","maxLength":20},"unit_price":{"type":"string","maxLength":30},"tax_code":{"type":"string","maxLength":50},"tax_rate":{"type":"string","maxLength":30}}});
+    let line = json!({"type":"object","properties":{"product_id":{"type":"integer","minimum":1},"description":{"type":"string","maxLength":500},"quantity":{"type":"string","maxLength":30},"unit":{"type":"string","maxLength":80},"unit_price":{"type":"string","maxLength":30},"tax_code":{"type":"string","maxLength":50},"tax_rate":{"type":"string","maxLength":30}}});
     let mut schema = json!({"type":"object","required":["company_id"],"properties":{
  "company_id":{"type":"integer","minimum":1},"id":{"type":"integer","minimum":1},"revision":{"type":"integer","minimum":1},
  "price_on":{"type":"string","maxLength":10},

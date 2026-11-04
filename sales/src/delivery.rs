@@ -1,14 +1,13 @@
 //! Delivery quantities are reserved from draft onward. All callers hold the
 //! company write lock before preparing a delivery or changing its source order.
 use crate::{
-    Record,
-    prepare::{Prepared, decimal, integer, invalid, required, text},
-    store,
+    prepare::{decimal, integer, invalid, required, text, Prepared},
+    store, Record,
 };
 use bilibi_agent_api::{Error, OperationClient, Result};
 use bilibi_tenancy::Scope;
 use rust_decimal::Decimal;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::{
     collections::{BTreeMap, BTreeSet},
     str::FromStr,
