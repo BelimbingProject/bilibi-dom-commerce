@@ -164,7 +164,7 @@ pub(crate) async fn prepare(
                 &format!("Order line {n} has {available} available for delivery."),
             ));
         }
-        lines.push(json!({"line_number":lines.len()+1,"order_line_number":n,"item_id":original["item_id"],"item_code":original["item_code"],"description":original["description"],"unit":original["unit"],"ordered_quantity":original["quantity"],"quantity":quantity.to_string()}));
+        lines.push(json!({"line_number":lines.len()+1,"order_line_number":n,"product_id":original["product_id"],"product_code":original["product_code"],"description":original["description"],"unit":original["unit"],"ordered_quantity":original["quantity"],"quantity":quantity.to_string()}));
     }
     p.facts = json!({"order_id":order.id,"order_number":order.code,"order_revision":order.revision,"customer_kind":order.facts["customer_kind"],"customer_id":order.facts["customer_id"],"customer_code":order.facts["customer_code"],"reference":text(v,"reference"),"lines":lines});
     if text(v, "reference").chars().count() > 200 {

@@ -21,12 +21,15 @@ use std::{
 pub(crate) struct Pages {
     sales: Arc<Sales>,
     currencies: Arc<bilibi_currency::Currencies>,
+    products: Arc<bilibi_product::Products>,
+    records: Arc<bilibi_records::Records>,
     contracts: Arc<PageContracts>,
     views: Arc<PageViews>,
     display: Arc<DisplayPolicy>,
     locales: Arc<bilibi_locale::Locales>,
 }
 impl Pages {
+    #[allow(clippy::too_many_arguments)] // Explicit owner services for the shared page contracts.
     pub fn new(
         sales: Arc<Sales>,
         contracts: Arc<PageContracts>,
@@ -34,10 +37,14 @@ impl Pages {
         display: Arc<DisplayPolicy>,
         locales: Arc<bilibi_locale::Locales>,
         currencies: Arc<bilibi_currency::Currencies>,
+        products: Arc<bilibi_product::Products>,
+        records: Arc<bilibi_records::Records>,
     ) -> Self {
         Self {
             sales,
             currencies,
+            products,
+            records,
             contracts,
             views,
             display,
@@ -47,7 +54,6 @@ impl Pages {
 }
 fn title(k: &str) -> &'static str {
     match k {
-        "item" => "Products",
         "quotation" => "Quotations",
         "delivery" => "Delivery orders",
         _ => "Sales orders",
@@ -55,7 +61,6 @@ fn title(k: &str) -> &'static str {
 }
 fn path(k: &str) -> &'static str {
     match k {
-        "item" => "/commerce/items",
         "quotation" => "/commerce/quotations",
         "delivery" => "/commerce/delivery-orders",
         _ => "/commerce/sales-orders",
@@ -63,7 +68,6 @@ fn path(k: &str) -> &'static str {
 }
 fn kind(op: &str) -> &'static str {
     match op {
-        "item" | "items" => "item",
         "quotation" | "quotations" => "quotation",
         "delivery" | "deliveries" => "delivery",
         _ => "order",
@@ -127,8 +131,11 @@ impl Page<Scope, Error> for Pages {
 struct State {
     sales: Arc<Sales>,
     currencies: Arc<bilibi_currency::Currencies>,
+    products: Arc<bilibi_product::Products>,
+    records: Arc<bilibi_records::Records>,
     contracts: Arc<PageContracts>,
     currency_choices: Vec<Choice>,
+    pickers: Vec<Html>,
     kind: &'static str,
     id: Option<i64>,
     framed: bool,
@@ -151,7 +158,6 @@ struct State {
     line_count: usize,
     flash: Option<(StatusKind, String)>,
     errors: BTreeMap<String, Vec<String>>,
-    commits: CommitStates,
     pending: Option<(String, String, Value)>,
     redirect: Option<String>,
     total: u64,
@@ -166,15 +172,7 @@ impl State {
     ) -> Result<Self> {
         let k = kind(op);
         let id = params::positive_id(params.get("id").map(String::as_str));
-        let cols = if k == "item" {
-            vec![
-                ("code", "Code"),
-                ("name", "Name"),
-                ("unit", "Unit"),
-                ("price", "Default price"),
-                ("tax", "Tax code"),
-            ]
-        } else if k == "delivery" {
+        let cols = if k == "delivery" {
             vec![
                 ("code", "Number"),
                 ("customer", "Customer"),
@@ -192,6 +190,9 @@ impl State {
         Ok(Self {
             sales: p.sales.clone(),
             currencies: p.currencies.clone(),
+            products: p.products.clone(),
+            records: p.records.clone(),
+            pickers: Vec::new(),
             currency_choices: Vec::new(),
             contracts: p.contracts.clone(),
             kind: k,
@@ -205,13 +206,7 @@ impl State {
                     .map(|(k, l)| BuiltinColumn::new(k, l))
                     .collect(),
             )
-            .and_then(|columns| {
-                columns.with_record_slots(if k == "item" {
-                    item_fields::ALL
-                } else {
-                    document_fields::ALL
-                })
-            })
+            .and_then(|columns| columns.with_record_slots(document_fields::ALL))
             .map_err(|_| Error::Internal)?,
             display_policy: p.display.clone(),
             locales: p.locales.clone(),
@@ -233,7 +228,6 @@ impl State {
             line_count: 1,
             flash: None,
             errors: BTreeMap::new(),
-            commits: CommitStates::default(),
             pending: None,
             redirect: None,
             total: 0,
@@ -246,7 +240,6 @@ impl State {
                 format!(
                     "{} {}",
                     match self.kind {
-                        "item" => "Product",
                         "quotation" => "Quotation",
                         "delivery" => "Delivery order",
                         _ => "Sales order",
@@ -272,9 +265,7 @@ impl State {
         }
         if let Some(id) = self.id {
             self.record = Some(self.sales.get(s, company, self.kind, id).await?);
-            if self.kind != "item" {
-                self.history = self.sales.history(s, company, id).await?;
-            }
+            self.history = self.sales.history(s, company, id).await?;
         } else {
             let status = self.list.filters.get("status").cloned().unwrap_or_default();
             self.rows = self
@@ -353,6 +344,95 @@ impl State {
                 }
             }
         }
+        self.product_pickers(s).await?;
+        Ok(())
+    }
+    async fn product_pickers(&mut self, scope: &Scope) -> Result<()> {
+        self.pickers.clear();
+        if !self.editing || self.kind == "delivery" {
+            return Ok(());
+        }
+        for i in 0..self.line_count {
+            let key = format!("line_{i}_product");
+            let query = self
+                .form
+                .get(&format!("{key}_search"))
+                .cloned()
+                .unwrap_or_default();
+            let chosen = self.form.get(&key).cloned();
+            let mut selected = None;
+            if let Some(value) = chosen.as_deref() {
+                if let Some(id) = value
+                    .strip_prefix("product:")
+                    .and_then(|id| id.parse::<i64>().ok())
+                    .filter(|id| *id > 0)
+                {
+                    let resolved = self
+                        .records
+                        .resolve(
+                            scope,
+                            &[bilibi_records::Reference::new("product", id.to_string())],
+                        )
+                        .await?;
+                    if let Some(record) = resolved.first() {
+                        selected = Some((
+                            value,
+                            record.pill(format!("product-{i}-chosen"), self.framed),
+                        ));
+                    }
+                    let c = self.sales.db.get().await?;
+                    let product = self.products.get(&**c, scope, id).await?;
+                    let on = self
+                        .form
+                        .get("price_on")
+                        .and_then(|s| s.parse::<bilibi_product::Date>().ok());
+                    let currency = self.form.get("currency_code").cloned().unwrap_or_default();
+                    let price = if let Some(on) = on.filter(|_| !currency.is_empty()) {
+                        self.products
+                            .price(
+                                &**c,
+                                scope,
+                                id,
+                                scope.current_company().map_or(0, |c| c.get()),
+                                &currency,
+                                on,
+                            )
+                            .await?
+                    } else {
+                        None
+                    };
+                    self.form
+                        .insert(format!("line_{i}_description"), product.name);
+                    self.form
+                        .insert(format!("line_{i}_unit"), product.base_unit);
+                    self.form.insert(
+                        format!("line_{i}_unit_price"),
+                        price.map(|p| p.amount.to_string()).unwrap_or_default(),
+                    );
+                    if self.form[&format!("line_{i}_unit_price")].is_empty() {
+                        self.errors.insert(format!("line_{i}_unit_price"), vec!["Price missing. Choose a currency and pricing date, then add a selling price in Products.".into()]);
+                    } else {
+                        self.errors.remove(&format!("line_{i}_unit_price"));
+                    }
+                }
+            }
+            let hits = if selected.is_none() && !query.is_empty() {
+                self.records.search(scope, &["product"], &query).await?
+            } else {
+                vec![]
+            };
+            self.pickers.push(render(&RecordPicker::new(
+                &format!("product-{i}"),
+                "form",
+                &key,
+                "Product (optional)",
+                &query,
+                &self.records.picker_hits(&hits),
+                selected,
+                (&format!("pick_product_{i}"), &format!("clear_product_{i}")),
+                vec![],
+            ))?);
+        }
         Ok(())
     }
     fn field(&self, key: &str, label: &str) -> Field {
@@ -369,20 +449,10 @@ impl State {
                 self.field("reference", "Reference"),
             ];
         }
-        if self.kind == "item" {
-            return [
-                ("code", "Code"),
-                ("name", "Name"),
-                ("unit", "Unit"),
-                ("default_price", "Default price"),
-                ("tax_code", "Tax code"),
-                ("tax_rate", "Tax rate (%)"),
-            ]
-            .iter()
-            .map(|(k, l)| self.field(k, l))
-            .collect();
-        }
         let mut fields = vec![
+            self.field("price_on", "Pricing date")
+                .kind(InputKind::Date)
+                .hint("Use selling prices effective on this date."),
             self.field("customer_kind", "Customer type")
                 .kind(InputKind::Select)
                 .options(vec![
@@ -421,9 +491,7 @@ impl State {
         }
         (0..self.line_count)
             .map(|i| {
-                let mut fields = vec![self
-                    .field(&format!("line_{i}_item_code"), "Product code")
-                    .hint("Leave blank to enter a typed line.")];
+                let mut fields = Vec::new();
                 for (k, l) in [
                     ("description", "Description"),
                     ("quantity", "Quantity"),
@@ -432,7 +500,16 @@ impl State {
                     ("tax_code", "Tax code"),
                     ("tax_rate", "Tax rate (%)"),
                 ] {
-                    fields.push(self.field(&format!("line_{i}_{k}"), l));
+                    let field = self.field(&format!("line_{i}_{k}"), l);
+                    fields.push(
+                        if self.form.contains_key(&format!("line_{i}_product"))
+                            && ["description", "unit", "unit_price"].contains(&k)
+                        {
+                            field.readonly()
+                        } else {
+                            field
+                        },
+                    );
                 }
                 fields
             })
@@ -470,9 +547,10 @@ impl State {
         if self.kind == "order" {
             if let Some(q) = self.form.get("quotation_number").filter(|s| !s.is_empty()) {
                 v["quotation_number"] = json!(q.parse::<i64>().unwrap_or(0));
+                v.as_object_mut().expect("object input").remove("price_on");
             }
         }
-        if self.kind != "item" {
+        {
             let lines = (0..self.line_count)
                 .filter_map(|i| {
                     let mut line = json!({});
@@ -492,13 +570,16 @@ impl State {
                     }
                     if let Some(code) = self
                         .form
-                        .get(&format!("line_{i}_item_code"))
+                        .get(&format!("line_{i}_product"))
                         .filter(|s| !s.is_empty())
                     {
-                        line["item_code"] = json!(code);
+                        line["product_id"] = json!(code
+                            .strip_prefix("product:")
+                            .and_then(|id| id.parse::<i64>().ok())
+                            .unwrap_or(0));
                     }
                     if text(&line, "description").is_empty()
-                        && line["item_code"].is_null()
+                        && line["product_id"].is_null()
                         && text(&line, "quantity").is_empty()
                     {
                         None
@@ -555,6 +636,43 @@ impl State {
     }
     async fn event(&mut self, r: &LiveRequest<'_, Scope>, v: &Value) -> Result<()> {
         let event = text(v, "type");
+        if event.starts_with("pick_product_") || event.starts_with("clear_product_") {
+            let c = self.sales.db.get().await?;
+            crate::authorize(
+                &**c,
+                r.scope,
+                r.scope.current_company().map_or(0, |c| c.get()),
+                MANAGE,
+            )
+            .await?;
+            drop(c);
+            let index = event
+                .rsplit('_')
+                .next()
+                .and_then(|s| s.parse::<usize>().ok())
+                .filter(|i| *i < self.line_count)
+                .ok_or(Error::Invalid)?;
+            let key = format!("line_{index}_product");
+            if event.starts_with("pick_") {
+                let id = text(v, "record")
+                    .strip_prefix("product:")
+                    .ok_or(Error::Invalid)?;
+                let c = self.sales.db.get().await?;
+                self.records
+                    .check(&**c, r.scope, "product", id)
+                    .await?
+                    .map_err(|_| Error::Forbidden)?;
+                self.form.insert(key, format!("product:{id}"));
+            } else {
+                self.form.remove(&key);
+                self.form.remove(&format!("{key}_search"));
+                for fact in ["description", "unit", "unit_price"] {
+                    self.form.remove(&format!("line_{index}_{fact}"));
+                }
+                self.errors.remove(&format!("line_{index}_unit_price"));
+            }
+            return Ok(());
+        }
         match event {
             "filters" => self.list.apply_filters(&params::form_values(v, "filters")),
             "page" => self.list.put_page(Some(text(v, "page"))),
@@ -567,6 +685,13 @@ impl State {
             "new" => {
                 self.editing = true;
                 self.form.clear();
+                self.form.insert(
+                    "price_on".into(),
+                    jiff::Timestamp::now()
+                        .to_zoned(jiff::tz::TimeZone::UTC)
+                        .date()
+                        .to_string(),
+                );
                 self.errors.clear();
                 self.line_count = 1;
                 self.source = None;
@@ -578,13 +703,14 @@ impl State {
             }
             "draft" => {
                 self.form = posted(v);
+                self.errors.clear();
             }
             "add_line" => {
                 if self.line_count < 100 {
                     self.line_count += 1;
                 }
             }
-            "create_item" | "create_quotation" | "create_order" | "create_delivery" => {
+            "create_quotation" | "create_order" | "create_delivery" => {
                 self.form = posted(v);
                 if self.kind == "delivery" && text(v, "intent") == "load_order" {
                     self.source = None;
@@ -610,42 +736,12 @@ impl State {
                     return Ok(());
                 }
                 let key = match self.kind {
-                    "item" => "commerce.sales.item.create",
                     "quotation" => "commerce.sales.quotation.create",
                     "delivery" => "commerce.sales.delivery.create",
                     _ => "commerce.sales.order.create",
                 };
                 self.submit(r.scope, r.credential, event, key, self.input(r.scope))
                     .await?;
-            }
-            "update_item" => {
-                if let Some(record) = &self.record {
-                    let field = text(v, "field");
-                    let value = text(v, "value");
-                    if !["name", "unit", "default_price", "tax_code", "tax_rate"].contains(&field) {
-                        return Ok(());
-                    }
-                    let mut input = record.facts.clone();
-                    input["company_id"] = json!(r.scope.current_company().map_or(0, |c| c.get()));
-                    input["id"] = json!(record.id);
-                    input["revision"] = json!(text(v, "version").parse::<i64>().unwrap_or(0));
-                    input[field] = json!(value);
-                    let call = Call {
-                        scope: r.scope,
-                        credential: r.credential,
-                        service: PAGES,
-                        event,
-                        contract: "commerce.sales.item.update",
-                    };
-                    let result = self.contracts.submit(&call, input).await;
-                    self.commits.put(
-                        field,
-                        match result {
-                            Ok(_) => CommitStatus::Saved,
-                            Err(e) => CommitStatus::Error(e.to_string()),
-                        },
-                    );
-                }
             }
             "quotation_transition" | "order_transition" | "delivery_transition" => {
                 if let Some(record) = &self.record {
@@ -727,16 +823,7 @@ impl State {
                     value: Html::text(&record.code),
                 },
             ];
-            let fields = if self.kind == "item" {
-                vec![
-                    ("name", "Name"),
-                    ("unit", "Unit"),
-                    ("default_price", "Default price"),
-                    ("currency_code", "Currency"),
-                    ("tax_code", "Tax code"),
-                    ("tax_rate", "Tax rate (%)"),
-                ]
-            } else if self.kind == "delivery" {
+            let fields = if self.kind == "delivery" {
                 vec![
                     ("customer_code", "Customer code"),
                     ("order_number", "Sales order number"),
@@ -746,6 +833,7 @@ impl State {
                 vec![
                     ("customer_code", "Customer code"),
                     ("currency_code", "Currency"),
+                    ("price_on", "Pricing date"),
                     ("reference", "Reference"),
                     ("valid_until", "Valid until"),
                     ("subtotal", "Subtotal"),
@@ -754,26 +842,8 @@ impl State {
                 ]
             };
             for (key, _) in fields {
-                let label = if self.kind == "item" {
-                    item_fields::get(key).label
-                } else {
-                    document_fields::get(key).label
-                };
-                let value = if self.kind == "item" {
-                    let mut f = InlineField::new(
-                        format!("item-{key}"),
-                        key,
-                        label,
-                        text(&record.facts, key),
-                    )
-                    .version(record.revision)
-                    .status(self.commits.get(key));
-                    f.save_event = "update_item".into();
-                    f.editable = self.manage && key != "currency_code";
-                    render(&InlineEdit { field: f })?
-                } else {
-                    Html::text(text(&record.facts, key))
-                };
+                let label = document_fields::get(key).label;
+                let value = Html::text(text(&record.facts, key));
                 facts.push(Fact {
                     title: label,
                     id: key,
@@ -882,12 +952,8 @@ impl State {
                     );
                     for (key, value) in [
                         ("order", text(&r.facts, "order_number")),
-                        ("name", text(&r.facts, "name")),
-                        ("unit", text(&r.facts, "unit")),
-                        ("price", text(&r.facts, "default_price")),
-                        ("tax", text(&r.facts, "tax_code")),
-                        ("tax_rate", text(&r.facts, "tax_rate")),
                         ("currency_code", text(&r.facts, "currency_code")),
+                        ("price_on", text(&r.facts, "price_on")),
                         ("reference", text(&r.facts, "reference")),
                         ("valid_until", text(&r.facts, "valid_until")),
                         ("subtotal", text(&r.facts, "subtotal")),
@@ -896,16 +962,6 @@ impl State {
                         ("status", &r.status),
                     ] {
                         row = row.slot(key, Html::text(value));
-                    }
-                    if self.kind == "item" {
-                        row = row.slot(
-                            "price",
-                            Html::text(&format!(
-                                "{} {}",
-                                text(&r.facts, "default_price"),
-                                text(&r.facts, "currency_code")
-                            )),
-                        );
                     }
                     row = row.slot(
                         "total",
@@ -938,7 +994,7 @@ impl State {
             &self.list.search,
             "Code or customer code",
         )];
-        if self.kind != "item" {
+        {
             let statuses: &[&str] = if self.kind == "quotation" {
                 &["", "draft", "sent", "accepted", "rejected", "expired"]
             } else if self.kind == "delivery" {
@@ -1025,13 +1081,11 @@ impl State {
                 PageVariant::List
             },
             create_title: match self.kind {
-                "item" => "New product",
                 "quotation" => "New quotation",
                 "delivery" => "New delivery order",
                 _ => "New sales order",
             },
             create_event: match self.kind {
-                "item" => "create_item",
                 "quotation" => "create_quotation",
                 "delivery" => "create_delivery",
                 _ => "create_order",
@@ -1070,10 +1124,11 @@ impl State {
                         .unwrap_or_default(),
                 ),
             lines: self.line_fields(),
+            pickers: self.pickers.clone(),
             line_description: if self.kind == "delivery" {
                 "Choose the quantity for this delivery."
             } else {
-                "Enter a product code and quantity, or enter all line details. Product lines use the catalog price, unit and tax."
+                "Choose a product or type a description. Enter quantity and tax for each line."
             },
             line_count: self.line_count,
             body,
@@ -1135,6 +1190,7 @@ struct View<'a> {
     fields: Vec<Field>,
     currency: Combobox,
     lines: Vec<Vec<Field>>,
+    pickers: Vec<Html>,
     line_count: usize,
     line_description: &'a str,
     body: Html,
@@ -1174,12 +1230,8 @@ fn posted(v: &Value) -> HashMap<String, String> {
         .collect()
 }
 
-bilibi_ui::record_fields! { mod item_fields {
- CODE:bilibi_ui::RecordField::new("code","Code"),NAME:bilibi_ui::RecordField::new("name","Name"),UNIT:bilibi_ui::RecordField::new("unit","Unit"),
- CURRENCY:bilibi_ui::RecordField::new("currency_code","Currency"),PRICE:bilibi_ui::RecordField::new("default_price","Default price").slot("price"),TAX:bilibi_ui::RecordField::new("tax_code","Tax code").slot("tax"),RATE:bilibi_ui::RecordField::new("tax_rate","Tax rate (%)"),STATUS:bilibi_ui::RecordField::new("status","Status")
-}}
 bilibi_ui::record_fields! { mod document_fields {
- ORDER:bilibi_ui::RecordField::new("order_number","Sales order number"),CODE:bilibi_ui::RecordField::new("code","Number"),CUSTOMER:bilibi_ui::RecordField::new("customer_code","Customer code").slot("customer"),CURRENCY:bilibi_ui::RecordField::new("currency_code","Currency"),REFERENCE:bilibi_ui::RecordField::new("reference","Reference"),EXPIRY:bilibi_ui::RecordField::new("valid_until","Valid until"),NET:bilibi_ui::RecordField::new("subtotal","Subtotal"),TAX:bilibi_ui::RecordField::new("tax_total","Tax"),TOTAL:bilibi_ui::RecordField::new("total","Total"),STATUS:bilibi_ui::RecordField::new("status","Status")
+ PRICE_ON:bilibi_ui::RecordField::new("price_on","Pricing date"),ORDER:bilibi_ui::RecordField::new("order_number","Sales order number"),CODE:bilibi_ui::RecordField::new("code","Number"),CUSTOMER:bilibi_ui::RecordField::new("customer_code","Customer code").slot("customer"),CURRENCY:bilibi_ui::RecordField::new("currency_code","Currency"),REFERENCE:bilibi_ui::RecordField::new("reference","Reference"),EXPIRY:bilibi_ui::RecordField::new("valid_until","Valid until"),NET:bilibi_ui::RecordField::new("subtotal","Subtotal"),TAX:bilibi_ui::RecordField::new("tax_total","Tax"),TOTAL:bilibi_ui::RecordField::new("total","Total"),STATUS:bilibi_ui::RecordField::new("status","Status")
 }}
 
 fn review_refusal(review: &Value) -> String {
