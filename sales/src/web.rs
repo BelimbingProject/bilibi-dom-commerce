@@ -976,9 +976,9 @@ fn posted(v: &Value) -> HashMap<String, String> {
 }
 
 bilibi_ui::record_fields! { mod item_fields {
- CODE:RecordField::new("code","Code"),NAME:RecordField::new("name","Name"),UNIT:RecordField::new("unit","Unit"),
- PRICE:RecordField::new("default_price","Default price").slot("price"),TAX:RecordField::new("tax_code","Tax code").slot("tax"),RATE:RecordField::new("tax_rate","Tax rate (%)"),STATUS:RecordField::new("status","Status")
+ CODE:bilibi_ui::RecordField::new("code","Code"),NAME:bilibi_ui::RecordField::new("name","Name"),UNIT:bilibi_ui::RecordField::new("unit","Unit"),
+ PRICE:bilibi_ui::RecordField::new("default_price","Default price").slot("price"),TAX:bilibi_ui::RecordField::new("tax_code","Tax code").slot("tax"),RATE:bilibi_ui::RecordField::new("tax_rate","Tax rate (%)"),STATUS:bilibi_ui::RecordField::new("status","Status")
 }}
 bilibi_ui::record_fields! { mod document_fields {
- CODE:RecordField::new("code","Number"),CUSTOMER:RecordField::new("customer_code","Customer code").slot("customer"),CURRENCY:RecordField::new("currency_code","Currency"),REFERENCE:RecordField::new("reference","Reference"),EXPIRY:RecordField::new("valid_until","Valid until"),NET:RecordField::new("subtotal","Subtotal"),TAX:RecordField::new("tax_total","Tax"),TOTAL:RecordField::new("total","Total"),STATUS:RecordField::new("status","Status")
+ CODE:bilibi_ui::RecordField::new("code","Number"),CUSTOMER:bilibi_ui::RecordField::new("customer_code","Customer code").slot("customer"),CURRENCY:bilibi_ui::RecordField::new("currency_code","Currency"),REFERENCE:bilibi_ui::RecordField::new("reference","Reference"),EXPIRY:bilibi_ui::RecordField::new("valid_until","Valid until"),NET:bilibi_ui::RecordField::new("subtotal","Subtotal"),TAX:bilibi_ui::RecordField::new("tax_total","Tax"),TOTAL:bilibi_ui::RecordField::new("total","Total"),STATUS:bilibi_ui::RecordField::new("status","Status")
 }}
