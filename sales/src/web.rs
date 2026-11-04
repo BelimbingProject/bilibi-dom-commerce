@@ -20,6 +20,7 @@ use std::{
 
 pub(crate) struct Pages {
     sales: Arc<Sales>,
+    currencies: Arc<bilibi_currency::Currencies>,
     contracts: Arc<PageContracts>,
     views: Arc<PageViews>,
     display: Arc<DisplayPolicy>,
@@ -32,9 +33,11 @@ impl Pages {
         views: Arc<PageViews>,
         display: Arc<DisplayPolicy>,
         locales: Arc<bilibi_locale::Locales>,
+        currencies: Arc<bilibi_currency::Currencies>,
     ) -> Self {
         Self {
             sales,
+            currencies,
             contracts,
             views,
             display,
@@ -123,7 +126,9 @@ impl Page<Scope, Error> for Pages {
 }
 struct State {
     sales: Arc<Sales>,
+    currencies: Arc<bilibi_currency::Currencies>,
     contracts: Arc<PageContracts>,
+    currency_choices: Vec<Choice>,
     kind: &'static str,
     id: Option<i64>,
     framed: bool,
@@ -186,6 +191,8 @@ impl State {
         };
         Ok(Self {
             sales: p.sales.clone(),
+            currencies: p.currencies.clone(),
+            currency_choices: Vec::new(),
             contracts: p.contracts.clone(),
             kind: k,
             id,
@@ -257,6 +264,7 @@ impl State {
         self.confirm = crate::authorize(&**c, s, company, CONFIRM).await.is_ok();
         let locale = self.locales.resolve(&**c, s, None).await?.locale;
         self.display = self.display_policy.display(&**c, s, None, locale).await?;
+        self.currency_choices = self.currencies.choices(&**c, s).await?;
         drop(c);
         if !self.columns_open {
             self.columns.from_params(s, &self.column_params).await?;
@@ -353,6 +361,11 @@ impl State {
             .value(self.form.get(key).cloned().unwrap_or_default())
             .errors(self.errors.get(key).cloned().unwrap_or_default())
     }
+    fn currency_field(&self) -> Field {
+        self.field("currency_code", "Currency")
+            .kind(InputKind::Select)
+            .options(self.currency_choices.clone())
+    }
     fn fields(&self) -> Vec<Field> {
         if self.kind == "delivery" {
             return vec![
@@ -362,7 +375,7 @@ impl State {
             ];
         }
         if self.kind == "item" {
-            return [
+            let mut fields: Vec<Field> = [
                 ("code", "Code"),
                 ("name", "Name"),
                 ("unit", "Unit"),
@@ -373,6 +386,8 @@ impl State {
             .iter()
             .map(|(k, l)| self.field(k, l))
             .collect();
+            fields.push(self.currency_field());
+            return fields;
         }
         let mut fields = vec![
             self.field("customer_kind", "Customer type")
@@ -383,7 +398,7 @@ impl State {
                 ]),
             self.field("customer_code", "Customer code")
                 .hint("Use the code from Core Companies or Contacts."),
-            self.field("currency_code", "Currency code"),
+            self.currency_field(),
             self.field("reference", "Reference"),
         ];
         if self.kind == "quotation" {

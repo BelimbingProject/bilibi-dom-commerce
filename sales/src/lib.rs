@@ -5,6 +5,7 @@ mod delivery;
 mod operations;
 mod prepare;
 mod print;
+mod records;
 mod store;
 mod web;
 

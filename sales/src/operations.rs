@@ -18,18 +18,21 @@ struct Services {
     events: Arc<Events>,
     records: Arc<Records>,
     parties: Arc<PartyProofs>,
+    currencies: Arc<bilibi_currency::Currencies>,
 }
 static SERVICES: OnceLock<Services> = OnceLock::new();
 pub(crate) fn bind(
     events: Arc<Events>,
     records: Arc<Records>,
     parties: Arc<PartyProofs>,
+    currencies: Arc<bilibi_currency::Currencies>,
 ) -> bilibi_module_registry::Result<()> {
     SERVICES
         .set(Services {
             events,
             records,
             parties,
+            currencies,
         })
         .map_err(|_| {
             bilibi_module_registry::RegistryError::Service("duplicate commerce binding".into())
@@ -42,6 +45,7 @@ impl Write {
         c: &dyn OperationClient,
         s: &Scope,
         v: &Value,
+        tx: Option<&MutationTransaction<'_>>,
     ) -> bilibi_agent_api::Result<prepare::Prepared> {
         let company = prepare::integer(v, "company_id")?;
         crate::authorize(c, s, company, MANAGE).await?;
@@ -58,7 +62,17 @@ impl Write {
             ));
         }
         let services = SERVICES.get().ok_or(bilibi_database::Error::Internal)?;
-        prepare::prepare(c, s, v, self.0, &services.records, &services.parties).await
+        prepare::prepare(
+            c,
+            s,
+            v,
+            self.0,
+            &services.records,
+            &services.parties,
+            &services.currencies,
+            tx,
+        )
+        .await
     }
 }
 impl WriteHandler for Write {
@@ -71,7 +85,7 @@ impl WriteHandler for Write {
         s: &'a Scope,
         v: &'a Value,
     ) -> OperationFuture<'a> {
-        Box::pin(async move { Ok(self.prepare(c, s, v).await?.review().into()) })
+        Box::pin(async move { Ok(self.prepare(c, s, v, None).await?.review().into()) })
     }
     fn commit<'a>(
         &'a self,
@@ -93,7 +107,7 @@ impl WriteHandler for Write {
                     bilibi_company::WriteError::Access(error) => error.into(),
                     _ => bilibi_database::Error::Internal.into(),
                 })?;
-            let p = self.prepare(tx.sql(), s, v).await?;
+            let p = self.prepare(tx.sql(), s, v, Some(tx)).await?;
             let changed = p.old.as_ref().is_some_and(|r| r.status != p.target);
             let record = store::apply(
                 tx,
@@ -201,6 +215,7 @@ fn schema(action: &str) -> Value {
                 "name",
                 "unit",
                 "default_price",
+                "currency_code",
                 "tax_code",
                 "tax_rate",
                 "active",
@@ -211,6 +226,7 @@ fn schema(action: &str) -> Value {
                 "name",
                 "unit",
                 "default_price",
+                "currency_code",
                 "tax_code",
                 "tax_rate",
             ],
@@ -223,6 +239,7 @@ fn schema(action: &str) -> Value {
                 "name",
                 "unit",
                 "default_price",
+                "currency_code",
                 "tax_code",
                 "tax_rate",
                 "active",
@@ -234,6 +251,7 @@ fn schema(action: &str) -> Value {
                 "name",
                 "unit",
                 "default_price",
+                "currency_code",
                 "tax_code",
                 "tax_rate",
             ],
