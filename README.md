@@ -51,3 +51,11 @@ The Finance consumer, stock, curated catalogs and discount tiers are follow-up w
 
 - [Sales contracts and versioned events](sales/README.md)
 - [Bilibi Platform](https://github.com/BelimbingProject/bilibi)
+
+## File length
+
+A pull request may not add a Rust file over 800 lines, and may not make a file that is already over 800 lines longer. Split it or keep it from growing.
+
+- Run `python3 scripts/file-length-ratchet.py` before you push; it compares your branch with `origin/main`.
+- Files under `fixtures/`, `examples/`, `migrations/` and `generated/` are skipped.
+- CI runs it as `.github/workflows/file-length.yml`. The same script is copied unchanged from the Bilibi Platform into every Bilibi repository.
