@@ -39,6 +39,17 @@ The sales order record shows delivered, remaining and available quantities per l
 
 Other modules can refer to `commerce.sales.quotation`, `commerce.sales.order` and `commerce.sales.delivery` through Base Records, using the record ID as text. Names and links come from the matching Grid declaration. Each owner checks the tenant, document kind, company desk access and `commerce.sales.view` before revealing a record. Core owns the `product` kind and its single Products list and page. Commerce has no product master, product operations or additional product panel; current delivery quantities belong to documents and need no product-level facts.
 
+## Actions on a company
+
+Commerce registers two Base Records drop targets in `src/web/drops.rs`, so every Companies row offers them in its actions menu to people who hold `commerce.sales.manage`:
+
+| Action | Opens | Commits when saved |
+| --- | --- | --- |
+| New quotation | Quotations, with the New quotation form open | `commerce.sales.quotation.create` |
+| New sales order | Sales orders, with the New sales order form open | `commerce.sales.order.create` |
+
+Each takes one company (`?drop=company:<id>`, or a company dropped on the list) and fills Customer type and Customer code with it. It saves nothing: you still add lines and save, and the create contract checks the customer again. A company you cannot see is refused with the Base Records message. Your own work company is refused at save, as when you type its code. Delivery orders and record pages take no drop.
+
 ## Events for invoice consumers
 
 Commerce declares three Base event types, each at **version 1**:
