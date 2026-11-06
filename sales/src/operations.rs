@@ -59,7 +59,7 @@ impl Write {
         // Purchasing; a second pool checkout would wait on our own company lock.
         let company_row=c.query_opt("SELECT status FROM companies WHERE tenant_id=$1 AND id=$2 AND deleted_at IS NULL FOR NO KEY UPDATE",&[&s.tenant(),&company]).await?.ok_or(Error::NotFound)?;
         if company_row.get::<_, String>(0) == "archived" {
-            return Err(prepare::invalid(
+            return Err(bilibi_agent_api::invalid(
                 "company_id",
                 "This company is archived; nothing in it can change.",
             ));
@@ -103,7 +103,7 @@ impl WriteHandler for Write {
             bilibi_company::require_writable(tx.sql(), s, company, true)
                 .await
                 .map_err(|e| match e {
-                    bilibi_company::WriteError::Archived => prepare::invalid(
+                    bilibi_company::WriteError::Archived => bilibi_agent_api::invalid(
                         "company_id",
                         "This company is archived; nothing in it can change.",
                     ),

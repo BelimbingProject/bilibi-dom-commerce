@@ -1,7 +1,7 @@
 //! Delivery quantities are reserved from draft onward. All callers hold the
 //! company write lock before preparing a delivery or changing its source order.
 use crate::{
-    prepare::{decimal, integer, invalid, required, text, Prepared},
+    prepare::{decimal, integer, required, text, Prepared},
     store, Record,
 };
 use bilibi_agent_api::{Error, OperationClient, Result};
@@ -83,7 +83,7 @@ pub(crate) async fn prepare(
             (old.status.as_str(), to.as_str()),
             ("draft", "shipped" | "cancelled") | ("shipped", "delivered" | "cancelled")
         ) {
-            return Err(invalid(
+            return Err(bilibi_agent_api::invalid(
                 "status",
                 "This delivery cannot move to that status.",
             ));
@@ -97,14 +97,17 @@ pub(crate) async fn prepare(
             text(v, "reason").to_owned()
         };
         if p.reason.chars().count() > 500 {
-            return Err(invalid("reason", "Use up to 500 characters."));
+            return Err(bilibi_agent_api::invalid(
+                "reason",
+                "Use up to 500 characters.",
+            ));
         }
         p.target = to;
         return Ok(p);
     }
     let order_id = if v["order_id"].as_i64().is_some() {
         if v["order_number"].as_i64().is_some() {
-            return Err(invalid(
+            return Err(bilibi_agent_api::invalid(
                 "order_id",
                 "Choose an order by its ID or its number, not both.",
             ));
@@ -124,7 +127,9 @@ pub(crate) async fn prepare(
         lines
             .as_array()
             .filter(|a| !a.is_empty() && a.len() <= 100)
-            .ok_or_else(|| invalid("lines", "Choose between 1 and 100 order lines."))?
+            .ok_or_else(|| {
+                bilibi_agent_api::invalid("lines", "Choose between 1 and 100 order lines.")
+            })?
             .clone()
     } else {
         source
@@ -138,7 +143,7 @@ pub(crate) async fn prepare(
             .collect()
     };
     if requests.is_empty() {
-        return Err(invalid(
+        return Err(bilibi_agent_api::invalid(
             "lines",
             "This order has no quantities available for delivery.",
         ));
@@ -148,27 +153,35 @@ pub(crate) async fn prepare(
     for request in requests {
         let n = integer(&request, "order_line_number")?;
         if !seen.insert(n) {
-            return Err(invalid("lines", "Choose each order line only once."));
+            return Err(bilibi_agent_api::invalid(
+                "lines",
+                "Choose each order line only once.",
+            ));
         }
         let original = source
             .iter()
             .find(|l| l["line_number"].as_i64() == Some(n))
-            .ok_or_else(|| invalid("lines", "Choose a line from this sales order."))?;
+            .ok_or_else(|| {
+                bilibi_agent_api::invalid("lines", "Choose a line from this sales order.")
+            })?;
         let quantity = decimal(&request, "quantity", true)?;
         let ordered = Decimal::from_str(text(original, "quantity"))
             .map_err(|_| bilibi_database::Error::Internal)?;
         let available = ordered - used.get(&n).copied().unwrap_or_default().0;
         if quantity > available {
-            return Err(invalid(
+            return Err(bilibi_agent_api::invalid(
                 "lines",
-                &format!("Order line {n} has {available} available for delivery."),
+                format!("Order line {n} has {available} available for delivery."),
             ));
         }
         lines.push(json!({"line_number":lines.len()+1,"order_line_number":n,"product_id":original["product_id"],"product_code":original["product_code"],"description":original["description"],"unit":original["unit"],"ordered_quantity":original["quantity"],"quantity":quantity.to_string()}));
     }
     p.facts = json!({"order_id":order.id,"order_number":order.code,"order_revision":order.revision,"customer_kind":order.facts["customer_kind"],"customer_id":order.facts["customer_id"],"customer_code":order.facts["customer_code"],"reference":text(v,"reference"),"lines":lines});
     if text(v, "reference").chars().count() > 200 {
-        return Err(invalid("reference", "Use up to 200 characters."));
+        return Err(bilibi_agent_api::invalid(
+            "reference",
+            "Use up to 200 characters.",
+        ));
     }
     Ok(p)
 }
@@ -177,7 +190,10 @@ async fn confirmed_order(c: &dyn OperationClient, s: &Scope, co: i64, id: i64) -
         .await?
         .ok_or(Error::NotFound)?;
     if order.status != "confirmed" {
-        return Err(invalid("order_id", "Choose a confirmed sales order."));
+        return Err(bilibi_agent_api::invalid(
+            "order_id",
+            "Choose a confirmed sales order.",
+        ));
     }
     Ok(order)
 }

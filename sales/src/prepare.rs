@@ -6,41 +6,48 @@ use bilibi_records::Records;
 use bilibi_tenancy::{PartyProofs, Scope};
 use rust_decimal::{Decimal, RoundingStrategy};
 use serde_json::{json, Value};
-use std::{collections::BTreeMap, str::FromStr};
+use std::str::FromStr;
 
-pub(crate) fn invalid(field: &str, message: &str) -> Error {
-    Error::InvalidInput(BTreeMap::from([(field.into(), vec![message.into()])]))
-}
 pub(crate) fn text<'a>(v: &'a Value, k: &str) -> &'a str {
     v[k].as_str().unwrap_or_default().trim()
 }
 pub(crate) fn integer(v: &Value, k: &str) -> Result<i64> {
     v[k].as_i64()
         .filter(|i| *i > 0)
-        .ok_or_else(|| invalid(k, "Choose a valid record."))
+        .ok_or_else(|| bilibi_agent_api::invalid(k, "Choose a valid record."))
 }
 pub(crate) fn required(v: &Value, k: &str, max: usize) -> Result<String> {
     let s = text(v, k);
     if s.is_empty() {
-        return Err(invalid(k, &format!("Enter a {}.", k.replace('_', " "))));
+        return Err(bilibi_agent_api::invalid(
+            k,
+            format!("Enter a {}.", k.replace('_', " ")),
+        ));
     }
     if s.chars().count() > max {
-        return Err(invalid(k, &format!("Use up to {max} characters.")));
+        return Err(bilibi_agent_api::invalid(
+            k,
+            format!("Use up to {max} characters."),
+        ));
     }
     if s.contains('\0') {
-        return Err(invalid(k, "Remove unsupported characters."));
+        return Err(bilibi_agent_api::invalid(
+            k,
+            "Remove unsupported characters.",
+        ));
     }
     Ok(s.into())
 }
 pub(crate) fn decimal(v: &Value, k: &str, positive: bool) -> Result<Decimal> {
     let s = required(v, k, 30)?;
-    let d = Decimal::from_str(&s).map_err(|_| invalid(k, "Enter a decimal number."))?;
+    let d = Decimal::from_str(&s)
+        .map_err(|_| bilibi_agent_api::invalid(k, "Enter a decimal number."))?;
     if d.scale() > 4
         || d < Decimal::ZERO
         || (positive && d == Decimal::ZERO)
         || d > Decimal::from(999_999_999_i64)
     {
-        return Err(invalid(
+        return Err(bilibi_agent_api::invalid(
             k,
             "Enter a positive quantity or a nonnegative price, with up to four decimals.",
         ));
@@ -55,7 +62,7 @@ fn money(d: Decimal, places: u32) -> Decimal {
 fn date(v: &Value, k: &str) -> Result<String> {
     let s = required(v, k, 10)?;
     if s.len() != 10 || jiff::civil::Date::from_str(&s).is_err() {
-        return Err(invalid(k, "Enter a date as YYYY-MM-DD."));
+        return Err(bilibi_agent_api::invalid(k, "Enter a date as YYYY-MM-DD."));
     }
     Ok(s)
 }
@@ -95,15 +102,18 @@ async fn currency(
         return currencies
             .check(tx, scope, code)
             .await?
-            .map_err(|e| invalid("currency_code", e.message()));
+            .map_err(|e| bilibi_agent_api::invalid("currency_code", e.message()));
     }
     let sql = c.transaction().ok_or(bilibi_database::Error::Internal)?;
     let currency = currencies
         .get(sql, scope, code)
         .await?
-        .ok_or_else(|| invalid("currency_code", "Choose a known currency."))?;
+        .ok_or_else(|| bilibi_agent_api::invalid("currency_code", "Choose a known currency."))?;
     if currency.withdrawn || !currency.enabled {
-        return Err(invalid("currency_code", "Choose an enabled currency."));
+        return Err(bilibi_agent_api::invalid(
+            "currency_code",
+            "Choose an enabled currency.",
+        ));
     }
     Ok(currency)
 }
@@ -165,13 +175,13 @@ pub(crate) async fn prepare(
             _ => false,
         };
         if !valid {
-            return Err(invalid(
+            return Err(bilibi_agent_api::invalid(
                 "status",
                 "This action no longer applies to the record or its expiry date.",
             ));
         }
         if to == "sent" && text(&old.facts, "valid_until") < today().as_str() {
-            return Err(invalid(
+            return Err(bilibi_agent_api::invalid(
                 "valid_until",
                 "This quotation has expired. Create a new quotation.",
             ));
@@ -180,7 +190,7 @@ pub(crate) async fn prepare(
             && to == "cancelled"
             && crate::delivery::has_active(c, scope, co, old.id).await?
         {
-            return Err(invalid(
+            return Err(bilibi_agent_api::invalid(
                 "status",
                 "Cancel draft deliveries first. An order with shipped or delivered quantities cannot be cancelled.",
             ));
@@ -191,13 +201,16 @@ pub(crate) async fn prepare(
             text(v, "reason").to_owned()
         };
         if p.reason.chars().count() > 500 {
-            return Err(invalid("reason", "Use up to 500 characters."));
+            return Err(bilibi_agent_api::invalid(
+                "reason",
+                "Use up to 500 characters.",
+            ));
         }
         p.target = to;
         return Ok(p);
     }
     if v["quotation_id"].as_i64().is_some() && v["quotation_number"].as_i64().is_some() {
-        return Err(invalid(
+        return Err(bilibi_agent_api::invalid(
             "quotation_id",
             "Choose a quotation by its ID or its number, not both.",
         ));
@@ -209,7 +222,7 @@ pub(crate) async fn prepare(
         if v.get("customer_code").is_some_and(|x| !x.is_null())
             || v.get("lines").is_some_and(|x| !x.is_null())
         {
-            return Err(invalid(
+            return Err(bilibi_agent_api::invalid(
                 "quotation_id",
                 "An order from a quotation uses that quotation's customer and lines. Remove the customer and lines, or clear the quotation.",
             ));
@@ -218,19 +231,22 @@ pub(crate) async fn prepare(
             integer(v, "quotation_id")?
         } else {
             let number = integer(v, "quotation_number")?;
-            c.query_opt("SELECT id FROM commerce_sales_documents WHERE tenant_id=$1 AND company_id=$2 AND kind='quotation' AND number=$3",&[&scope.tenant(),&co,&number]).await?.ok_or_else(||invalid("quotation_number","That quotation is not available."))?.try_get(0).map_err(bilibi_database::Error::from)?
+            c.query_opt("SELECT id FROM commerce_sales_documents WHERE tenant_id=$1 AND company_id=$2 AND kind='quotation' AND number=$3",&[&scope.tenant(),&co,&number]).await?.ok_or_else(||bilibi_agent_api::invalid("quotation_number","That quotation is not available."))?.try_get(0).map_err(bilibi_database::Error::from)?
         };
         let quote = store::get(c, scope.tenant(), co, "quotation", id)
             .await?
             .ok_or(Error::NotFound)?;
         if quote.status != "accepted" {
-            return Err(invalid("quotation_id", "Choose an accepted quotation."));
+            return Err(bilibi_agent_api::invalid(
+                "quotation_id",
+                "Choose an accepted quotation.",
+            ));
         }
-        if c.query_opt("SELECT id FROM commerce_sales_documents WHERE tenant_id=$1 AND company_id=$2 AND quotation_id=$3",&[&scope.tenant(),&co,&id]).await?.is_some() {return Err(invalid("quotation_id","A sales order already exists for this quotation."));}
+        if c.query_opt("SELECT id FROM commerce_sales_documents WHERE tenant_id=$1 AND company_id=$2 AND quotation_id=$3",&[&scope.tenant(),&co,&id]).await?.is_some() {return Err(bilibi_agent_api::invalid("quotation_id","A sales order already exists for this quotation."));}
         for field in ["currency_code", "customer_kind", "price_on"] {
             let given = text(v, field);
             if !given.is_empty() && given != text(&quote.facts, field) {
-                return Err(invalid(
+                return Err(bilibi_agent_api::invalid(
                     field,
                     "This differs from the quotation. Clear it to use the quotation's value.",
                 ));
@@ -249,7 +265,10 @@ pub(crate) async fn prepare(
         ),
     };
     if !["company", "person"].contains(&customer_kind.as_str()) {
-        return Err(invalid("customer_kind", "Choose Company or Person."));
+        return Err(bilibi_agent_api::invalid(
+            "customer_kind",
+            "Choose Company or Person.",
+        ));
     }
     let identity = parties
         .parties_by_codes(c, scope, std::slice::from_ref(&customer_code))
@@ -257,7 +276,7 @@ pub(crate) async fn prepare(
         .into_iter()
         .find(|i| i.record_kind() == customer_kind)
         .ok_or_else(|| {
-            invalid(
+            bilibi_agent_api::invalid(
                 "customer_code",
                 "That Core company or person is not available.",
             )
@@ -266,20 +285,23 @@ pub(crate) async fn prepare(
         .check(c, scope, &customer_kind, &identity.record_id().to_string())
         .await?
         .map_err(|_| {
-            invalid(
+            bilibi_agent_api::invalid(
                 "customer_code",
                 "You cannot use that Core company or person.",
             )
         })?;
     if identity.status != "active" || (customer_kind == "company" && identity.record_id() == co) {
-        return Err(invalid(
+        return Err(bilibi_agent_api::invalid(
             "customer_code",
             "Choose an active customer other than the current company.",
         ));
     }
     if let Some((id, quote)) = from_quote {
         if text(v, "reference").chars().count() > 200 {
-            return Err(invalid("reference", "Use up to 200 characters."));
+            return Err(bilibi_agent_api::invalid(
+                "reference",
+                "Use up to 200 characters.",
+            ));
         }
         currency(
             c,
@@ -304,11 +326,11 @@ pub(crate) async fn prepare(
     };
     let on = price_on
         .parse::<bilibi_product::Date>()
-        .map_err(|_| invalid("price_on", "Choose a pricing date."))?;
+        .map_err(|_| bilibi_agent_api::invalid("price_on", "Choose a pricing date."))?;
     let input = v["lines"]
         .as_array()
         .filter(|a| !a.is_empty() && a.len() <= 100)
-        .ok_or_else(|| invalid("lines", "Add between 1 and 100 lines."))?;
+        .ok_or_else(|| bilibi_agent_api::invalid("lines", "Add between 1 and 100 lines."))?;
     let mut lines = Vec::new();
     let mut subtotal = Decimal::ZERO;
     let mut tax_total = Decimal::ZERO;
@@ -323,7 +345,7 @@ pub(crate) async fn prepare(
             let reference = records
                 .check(c, scope, "product", &id.to_string())
                 .await?
-                .map_err(|e| invalid("lines", e.message()))?;
+                .map_err(|e| bilibi_agent_api::invalid("lines", e.message()))?;
             let id = reference
                 .id
                 .parse::<i64>()
@@ -336,7 +358,7 @@ pub(crate) async fn prepare(
             };
             let product = products.get(sql, scope, id).await?;
             let price = products.price(sql, scope, id, co, &currency.code, on).await?
-                .ok_or_else(|| invalid("lines", "This product has no price for the selling company, currency and pricing date. Add a dated selling price in Products."))?;
+                .ok_or_else(|| bilibi_agent_api::invalid("lines", "This product has no price for the selling company, currency and pricing date. Add a dated selling price in Products."))?;
             source["description"] = json!(product.name);
             source["unit"] = json!(product.base_unit);
             source["unit_price"] = json!(price.amount.to_string());
@@ -346,15 +368,15 @@ pub(crate) async fn prepare(
         let price = money(decimal(&source, "unit_price", false)?, places);
         let rate = decimal(&source, "tax_rate", false)?;
         if rate > Decimal::from(100) {
-            return Err(invalid(
+            return Err(bilibi_agent_api::invalid(
                 "tax_rate",
                 "Tax rate must be from 0 to 100 percent.",
             ));
         }
         let net = money(
-            quantity
-                .checked_mul(price)
-                .ok_or_else(|| invalid("lines", "The line amount is too large."))?,
+            quantity.checked_mul(price).ok_or_else(|| {
+                bilibi_agent_api::invalid("lines", "The line amount is too large.")
+            })?,
             places,
         );
         let tax = money(net * rate / Decimal::from(100), places);
@@ -365,7 +387,10 @@ pub(crate) async fn prepare(
     let valid_until = if kind == "quotation" {
         let d = date(v, "valid_until")?;
         if d < today() {
-            return Err(invalid("valid_until", "Choose today or a later date."));
+            return Err(bilibi_agent_api::invalid(
+                "valid_until",
+                "Choose today or a later date.",
+            ));
         }
         Some(d)
     } else {
@@ -373,7 +398,10 @@ pub(crate) async fn prepare(
     };
     p.facts = json!({"customer_kind":customer_kind,"customer_id":identity.record_id(),"customer_code":customer_code,"currency_code":currency.code,"price_on":price_on,"valid_until":valid_until,"reference":text(v,"reference"),"lines":lines,"subtotal":money(subtotal,places).to_string(),"tax_total":money(tax_total,places).to_string(),"total":money(subtotal+tax_total,places).to_string()});
     if text(v, "reference").chars().count() > 200 {
-        return Err(invalid("reference", "Use up to 200 characters."));
+        return Err(bilibi_agent_api::invalid(
+            "reference",
+            "Use up to 200 characters.",
+        ));
     }
     Ok(p)
 }
