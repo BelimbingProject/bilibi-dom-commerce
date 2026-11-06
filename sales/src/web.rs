@@ -17,12 +17,14 @@ use std::{
     collections::{BTreeMap, HashMap},
     sync::{Arc, LazyLock},
 };
+mod drops;
 
 pub(crate) struct Pages {
     sales: Arc<Sales>,
     currencies: Arc<bilibi_currency::Currencies>,
     products: Arc<bilibi_product::Products>,
     records: Arc<bilibi_records::Records>,
+    parties: Arc<bilibi_tenancy::PartyProofs>,
     contracts: Arc<PageContracts>,
     views: Arc<PageViews>,
     display: Arc<DisplayPolicy>,
@@ -39,12 +41,14 @@ impl Pages {
         currencies: Arc<bilibi_currency::Currencies>,
         products: Arc<bilibi_product::Products>,
         records: Arc<bilibi_records::Records>,
+        parties: Arc<bilibi_tenancy::PartyProofs>,
     ) -> Self {
         Self {
             sales,
             currencies,
             products,
             records,
+            parties,
             contracts,
             views,
             display,
@@ -133,6 +137,9 @@ struct State {
     currencies: Arc<bilibi_currency::Currencies>,
     products: Arc<bilibi_product::Products>,
     records: Arc<bilibi_records::Records>,
+    parties: Arc<bilibi_tenancy::PartyProofs>,
+    /// A `?drop=` company to open the new-document review on, once.
+    dropped: Option<String>,
     contracts: Arc<PageContracts>,
     currency_choices: Vec<Choice>,
     pickers: Vec<Html>,
@@ -192,6 +199,11 @@ impl State {
             currencies: p.currencies.clone(),
             products: p.products.clone(),
             records: p.records.clone(),
+            parties: p.parties.clone(),
+            dropped: q
+                .get(bilibi_records::DROP_PARAM)
+                .filter(|_| id.is_none() && k != "delivery")
+                .cloned(),
             pickers: Vec::new(),
             currency_choices: Vec::new(),
             contracts: p.contracts.clone(),
@@ -344,8 +356,27 @@ impl State {
                 }
             }
         }
+        if let Some(text) = self.dropped.take() {
+            self.receive_drop(s, &text).await?;
+        }
         self.product_pickers(s).await?;
         Ok(())
+    }
+    /// The empty new-document review, as "+ Quotation" opens it.
+    fn open_new(&mut self) {
+        self.editing = true;
+        self.form.clear();
+        self.form.insert(
+            "price_on".into(),
+            jiff::Timestamp::now()
+                .to_zoned(jiff::tz::TimeZone::UTC)
+                .date()
+                .to_string(),
+        );
+        self.errors.clear();
+        self.line_count = 1;
+        self.source = None;
+        self.source_requested = false;
     }
     async fn product_pickers(&mut self, scope: &Scope) -> Result<()> {
         self.pickers.clear();
@@ -682,21 +713,8 @@ impl State {
                     .await?;
             }
             "clear-flash" => self.flash = None,
-            "new" => {
-                self.editing = true;
-                self.form.clear();
-                self.form.insert(
-                    "price_on".into(),
-                    jiff::Timestamp::now()
-                        .to_zoned(jiff::tz::TimeZone::UTC)
-                        .date()
-                        .to_string(),
-                );
-                self.errors.clear();
-                self.line_count = 1;
-                self.source = None;
-                self.source_requested = false;
-            }
+            "new" => self.open_new(),
+            bilibi_records::DROP_EVENT => self.receive_drop(r.scope, text(v, "records")).await?,
             "close" => {
                 self.editing = false;
                 self.pending = None;
@@ -1141,6 +1159,7 @@ impl State {
             confirmation,
             errors: self.errors.values().flatten().cloned().collect(),
         })
+        .map(|html| self.drop_zone(html))
     }
 }
 impl LiveState<Scope, Error> for State {

@@ -35,7 +35,7 @@ Each kind of record has one list and one detail page under **Commerce**:
 | Sales orders | Create directly or copy an accepted quotation, then confirm or cancel. See delivered and remaining quantities on each line. |
 | Delivery orders | Choose a confirmed sales order, save full or partial quantities, then ship and mark delivered. Print an A4 delivery order. |
 
-A customer is a Core Company or Person. Enter its existing Core code and choose its type. Commerce proves that you can use that record and stores its kind and ID, without creating a separate customer identity.
+A customer is a Core Company or Person. Enter its existing Core code and choose its type. Commerce proves that you can use that record and stores its kind and ID, without creating a separate customer identity. On the Companies list, a row's actions menu offers **New quotation** and **New sales order**, which open the new form with that company filled in.
 
 Choose a product by name using the shared picker, then enter quantity, tax code and tax rate. Commerce copies the description, base unit and Core selling price when you save. The price is for the selected work company, currency and pricing date (today by default). A missing price stays missing: add a dated selling price on the Core Products page before saving. You can also leave the product unchosen and type description, quantity, unit, price and tax. A zero tax rate must be entered explicitly; Commerce supplies no company-specific tax codes, units, currency or prices.
 
