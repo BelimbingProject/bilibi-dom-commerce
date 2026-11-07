@@ -82,6 +82,8 @@ pub(crate) struct Prepared {
     pub target: String,
     pub reason: String,
     pub quotation: Option<i64>,
+    /// The currency a new document takes, for the commit's `check`.
+    pub assigns_currency: Option<String>,
 }
 impl Prepared {
     pub fn review(&self) -> Value {
@@ -89,8 +91,9 @@ impl Prepared {
     }
 }
 
-// Preview borrows the operation's transaction; commit additionally locks the
-// enabled assignment through Core Currency, keeping a concurrent disable out.
+// Preview and commit read the currency the same way: any current one may be
+// chosen. The commit then hands it to Core Currency's `check` on its own
+// transaction (`Prepared::assigns_currency`), which marks it used.
 async fn currency(
     c: &dyn OperationClient,
     scope: &Scope,
@@ -98,21 +101,18 @@ async fn currency(
     currencies: &bilibi_currency::Currencies,
     tx: Option<&bilibi_database::MutationTransaction<'_>>,
 ) -> Result<bilibi_currency::Currency> {
-    if let Some(tx) = tx {
-        return currencies
-            .check(tx, scope, code)
-            .await?
-            .map_err(|e| bilibi_agent_api::invalid("currency_code", e.message()));
-    }
-    let sql = c.transaction().ok_or(bilibi_database::Error::Internal)?;
+    let sql = match tx {
+        Some(tx) => tx.sql(),
+        None => c.transaction().ok_or(bilibi_database::Error::Internal)?,
+    };
     let currency = currencies
         .get(sql, scope, code)
         .await?
         .ok_or_else(|| bilibi_agent_api::invalid("currency_code", "Choose a known currency."))?;
-    if currency.withdrawn || !currency.enabled {
+    if currency.withdrawn {
         return Err(bilibi_agent_api::invalid(
             "currency_code",
-            "Choose an enabled currency.",
+            "This currency has been withdrawn; choose another.",
         ));
     }
     Ok(currency)
@@ -147,6 +147,7 @@ pub(crate) async fn prepare(
         target: "draft".into(),
         reason: String::new(),
         quotation: None,
+        assigns_currency: None,
     };
     if action.ends_with("transition") {
         let old = store::get(c, scope.tenant(), co, kind, integer(v, "id")?)
@@ -303,7 +304,7 @@ pub(crate) async fn prepare(
                 "Use up to 200 characters.",
             ));
         }
-        currency(
+        let currency = currency(
             c,
             scope,
             text(&quote.facts, "currency_code"),
@@ -311,6 +312,7 @@ pub(crate) async fn prepare(
             tx,
         )
         .await?;
+        p.assigns_currency = Some(currency.code);
         p.facts = quote.facts;
         p.facts["reference"] = json!(text(v, "reference"));
         p.facts["quotation_id"] = json!(id);
@@ -318,6 +320,7 @@ pub(crate) async fn prepare(
         return Ok(p);
     }
     let currency = currency(c, scope, text(v, "currency_code"), currencies, tx).await?;
+    p.assigns_currency = Some(currency.code.clone());
     let places = currency.minor_units;
     let price_on = if text(v, "price_on").is_empty() {
         today()
