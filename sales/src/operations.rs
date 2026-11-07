@@ -112,6 +112,16 @@ impl WriteHandler for Write {
                     _ => bilibi_database::Error::Internal.into(),
                 })?;
             let p = self.prepare(tx.sql(), s, v, Some(tx)).await?;
+            // A new document's currency: Core refuses a withdrawn one and
+            // marks a first use, in this transaction.
+            if let Some(code) = &p.assigns_currency {
+                let services = SERVICES.get().ok_or(bilibi_database::Error::Internal)?;
+                services
+                    .currencies
+                    .check(tx, s, code)
+                    .await?
+                    .map_err(|e| bilibi_agent_api::invalid("currency_code", e.message()))?;
+            }
             let changed = p.old.as_ref().is_some_and(|r| r.status != p.target);
             let record = store::apply(
                 tx,
