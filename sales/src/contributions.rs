@@ -38,7 +38,7 @@ domains:&["commerce"],verbs:&["confirm"],capabilities:&[C::tenant(VIEW),C::tenan
 inventory::submit! {Contribution::new(EVENTS,crate::operations::CONFIRMED,provenance!(),&EventType{version:1})}
 inventory::submit! {Contribution::new(EVENTS,crate::operations::STATUS_CHANGED,provenance!(),&EventType{version:1})}
 inventory::submit! {Contribution::new(PAGE_WRITES,PAGES,provenance!(),&PageWrites{service:PAGES,contracts:&[
-("create_delivery","commerce.sales.delivery.create"),("delivery_transition","commerce.sales.delivery.transition"),("confirm_action","commerce.sales.delivery.transition"),
+("grid","base.grid.view.save"),("grid","base.grid.view.delete"),("create_delivery","commerce.sales.delivery.create"),("delivery_transition","commerce.sales.delivery.transition"),("confirm_action","commerce.sales.delivery.transition"),
 ("create_quotation","commerce.sales.quotation.create"),("quotation_transition","commerce.sales.quotation.transition"),
 ("create_order","commerce.sales.order.create"),("order_transition","commerce.sales.order.transition"),("confirm_action","commerce.sales.quotation.transition"),("confirm_action","commerce.sales.order.transition")],pending:Pending::None})}
 macro_rules! route {($id:literal,$path:literal,$op:literal)=>{inventory::submit!{Contribution::new(ROUTES,$id,provenance!(),&Route{company_scope:CompanyScope::Company,method:Method::Get,path:$path,service:PAGES,operation:$op,access:Access::Capability(VIEW),framed:true})}};}
