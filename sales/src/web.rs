@@ -1249,8 +1249,8 @@ fn posted(v: &Value) -> HashMap<String, String> {
         .collect()
 }
 
-bilibi_ui::record_fields! { mod document_fields {
- PRICE_ON:bilibi_ui::RecordField::new("price_on","Pricing date"),ORDER:bilibi_ui::RecordField::new("order_number","Sales order number"),CODE:bilibi_ui::RecordField::new("code","Number"),CUSTOMER:bilibi_ui::RecordField::new("customer_code","Customer code").slot("customer"),CURRENCY:bilibi_ui::RecordField::new("currency_code","Currency"),REFERENCE:bilibi_ui::RecordField::new("reference","Reference"),EXPIRY:bilibi_ui::RecordField::new("valid_until","Valid until"),NET:bilibi_ui::RecordField::new("subtotal","Subtotal"),TAX:bilibi_ui::RecordField::new("tax_total","Tax"),TOTAL:bilibi_ui::RecordField::new("total","Total"),STATUS:bilibi_ui::RecordField::new("status","Status")
+bilibi_ui::record_fields! { "commerce/sales", mod document_fields {
+ PRICE_ON:bilibi_ui::RecordField::new("price_on","Pricing date",bilibi_ui::RecordFieldType::Date),ORDER:bilibi_ui::RecordField::new("order_number","Sales order number",bilibi_ui::RecordFieldType::String),CODE:bilibi_ui::RecordField::new("code","Number",bilibi_ui::RecordFieldType::String),CUSTOMER:bilibi_ui::RecordField::new("customer_code","Customer code",bilibi_ui::RecordFieldType::String).slot("customer"),CURRENCY:bilibi_ui::RecordField::new("currency_code","Currency",bilibi_ui::RecordFieldType::String),REFERENCE:bilibi_ui::RecordField::new("reference","Reference",bilibi_ui::RecordFieldType::String),EXPIRY:bilibi_ui::RecordField::new("valid_until","Valid until",bilibi_ui::RecordFieldType::Date),NET:bilibi_ui::RecordField::new("subtotal","Subtotal",bilibi_ui::RecordFieldType::Decimal),TAX:bilibi_ui::RecordField::new("tax_total","Tax",bilibi_ui::RecordFieldType::Decimal),TOTAL:bilibi_ui::RecordField::new("total","Total",bilibi_ui::RecordFieldType::Decimal),STATUS:bilibi_ui::RecordField::new("status","Status",bilibi_ui::RecordFieldType::String)
 }}
 
 fn review_refusal(review: &Value) -> String {
