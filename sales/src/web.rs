@@ -275,6 +275,7 @@ impl State {
             self.columns.from_params(s, &self.column_params).await?;
             self.columns_open = true;
         }
+        self.columns.refresh_views(s).await?;
         if let Some(id) = self.id {
             self.record = Some(self.sales.get(s, company, self.kind, id).await?);
             self.history = self.sales.history(s, company, id).await?;
@@ -708,8 +709,19 @@ impl State {
             "filters" => self.list.apply_filters(&params::form_values(v, "filters")),
             "page" => self.list.put_page(Some(text(v, "page"))),
             "grid" => {
+                let query = self.list.to_params();
                 self.columns
-                    .handle(r.scope, &params::string_values(v))
+                    .handle(
+                        r.scope,
+                        &PageColumns::event_values(v)?,
+                        bilibi_grid::ViewCaller {
+                            contracts: &self.contracts,
+                            credential: r.credential,
+                            service: crate::contributions::PAGES,
+                            event: "grid",
+                            query,
+                        },
+                    )
                     .await?;
             }
             "clear-flash" => self.flash = None,
