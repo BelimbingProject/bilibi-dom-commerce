@@ -2,6 +2,7 @@
 //! the reviewed contracts in operations; pages and agents share that door.
 mod contributions;
 mod delivery;
+mod follow_up;
 mod operations;
 mod prepare;
 mod print;

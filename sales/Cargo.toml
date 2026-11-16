@@ -7,6 +7,8 @@ license.workspace = true
 publish = false
 
 [dependencies]
+bilibi-rules.workspace = true
+bilibi-activity.workspace = true
 askama.workspace = true
 bilibi-agent-api.workspace = true
 bilibi-artifacts.workspace = true
