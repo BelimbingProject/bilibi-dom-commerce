@@ -48,7 +48,6 @@ impl Sales {
     pub fn new(db: Db) -> Self {
         Self { db }
     }
-    #[allow(clippy::too_many_arguments)] // Bounded query with explicit company and kind.
     pub async fn list(
         &self,
         scope: &Scope,
