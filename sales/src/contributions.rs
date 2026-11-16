@@ -23,7 +23,7 @@ macro_rules! provenance {
     };
 }
 inventory::submit! {Module{id:MODULE,layer:Layer::Domains,
-dependencies:&["base/agent_api","base/artifacts","base/authz","base/database","base/datetime","base/events","base/grid","base/locale","base/menu","base/records","base/party_ids","base/tenancy","base/ui","core/company","core/currency","core/product"],
+dependencies:&["base/rules","core/activity","base/agent_api","base/artifacts","base/authz","base/database","base/datetime","base/events","base/grid","base/locale","base/menu","base/records","base/party_ids","base/tenancy","base/ui","core/company","core/currency","core/product"],
 migrations:&[("commerce-sales-001-sales",include_str!("../migrations/001-sales.sql")),("commerce-sales-002-deliveries",include_str!("../migrations/002-deliveries.sql")),("commerce-sales-003-core-products",include_str!("../migrations/003-core-products.sql"))],
 services:&[
 Service{id:SERVICE,factory:|services|{
@@ -34,7 +34,7 @@ Service{id:crate::print::SERVICE,factory:|services|Ok(Arc::new(bilibi_ui::downlo
 Service{id:PAGES,factory:|services|Ok(Arc::new(PageService::<Scope,bilibi_database::Error>(Arc::new(crate::web::Pages::new(services.get::<Sales>(SERVICE)?,services.get(bilibi_agent_api::page::SERVICE)?,services.get(bilibi_grid::PAGE_VIEWS)?,services.get("base/datetime.display")?,services.get("base/locale.locales")?,services.get(bilibi_currency::SERVICE)?,services.get(bilibi_product::SERVICE)?,services.get(bilibi_records::SERVICE)?,services.get("base/tenancy.parties")?)))))},
 ]}}
 inventory::submit! {Contribution::new(VOCABULARY,"commerce/sales.vocabulary",provenance!(),&VocabularyContribution{
-domains:&["commerce"],verbs:&["confirm"],capabilities:&[C::tenant(VIEW),C::tenant(MANAGE),C::tenant(CONFIRM)],roles:&[RoleDefinition{code:"tenant_owner",name:"Tenant Owner",description:"Contributed system role; reconciled explicitly",grant_all:false,capabilities:&[VIEW,MANAGE,CONFIRM]}],system_principals:&[]})}
+domains:&["commerce"],verbs:&["confirm"],capabilities:&[C::tenant(VIEW),C::tenant(MANAGE),C::tenant(CONFIRM),C::tenant(crate::follow_up::MANAGE)],roles:&[RoleDefinition{code:"tenant_owner",name:"Tenant Owner",description:"Contributed system role; reconciled explicitly",grant_all:false,capabilities:&[VIEW,MANAGE,CONFIRM,crate::follow_up::MANAGE]}],system_principals:&[]})}
 inventory::submit! {Contribution::new(EVENTS,crate::operations::CONFIRMED,provenance!(),&EventType{version:1})}
 inventory::submit! {Contribution::new(EVENTS,crate::operations::STATUS_CHANGED,provenance!(),&EventType{version:1})}
 inventory::submit! {Contribution::new(PAGE_WRITES,PAGES,provenance!(),&PageWrites{service:PAGES,contracts:&[

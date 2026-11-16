@@ -21,7 +21,7 @@ Quantities, prices and rates are exact decimal strings with at most four decimal
 
 Quotations move `draft → sent → accepted | rejected | expired`. Sales orders move `draft → confirmed → cancelled`, and drafts may be cancelled. A status change requires the current revision, so stale browser or agent actions are refused. Status history records creation and each transition with account, impersonator, reason and UTC instant. History and document facts are protected against changes and deletion by database triggers.
 
-`commerce.sales.view` opens read pages. `commerce.sales.manage` permits writes; confirmation also requires `commerce.sales.confirm`. Tenant Owner receives all three through the vocabulary contribution. The company desk proof still applies to each call.
+`commerce.sales.view` opens read pages. `commerce.sales.manage` permits writes; confirmation also requires `commerce.sales.confirm`. Tenant Owner receives these and `commerce.sales.followup.manage` through the vocabulary contribution. The company desk proof still applies to each call.
 
 ## Delivery orders
 
@@ -105,3 +105,11 @@ The delivered event is recorded on the same audited transaction as the delivered
 - [Domain build and selling guide](../README.md)
 - Platform `apps/base/events/README.md` for durable delivery, replay and subscriber contracts.
 - Platform `apps/base/agent_api/README.md` for preview and commit.
+
+## Tenant follow-up rules
+
+`commerce/sales.order_confirmed` is offered as a Rules trigger over `commerce_rule_orders` (`id`, `company_id`, `revision`, `status`, `label`, `total`, `currency`). `commerce.sales.order.follow_up` creates a private Core activity on the confirmed sales order, using `record_id`, `expected_revision`, `assignee_user_id` and `title`. The operation rechecks `commerce.sales.view` and `commerce.sales.followup.manage`, the writable company, current revision and confirmed status under the source locks. It confirms or cancels nothing.
+
+Grant `rules` the two Commerce keys above, `rules.run.execute` and `core.activity.system.create`, and allow event delivery (`domain-events`). Draft and approve a rule through Base Rules; select the company with a `company_id` condition when its recipient has a desk in only one workplace. The recipient must be active with a desk in the source company. The task is private and no source facts or email are copied. Multiple confirmation parts share one task for the same order revision, recipient and trimmed title (Platform `apps/core/activity/README.md`, Follow-up operations).
+
+Run the mounted proof on a fresh disposable database with `DATABASE_URL=… ./fixtures/walkthrough/rules-followup.sh` from this Domain. The companion Platform example drives Base Rules, Events and Queue, checks one private task per source revision (including multipart events), and refuses stale revisions and a foreign recipient.
