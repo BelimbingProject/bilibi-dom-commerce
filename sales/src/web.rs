@@ -31,7 +31,6 @@ pub(crate) struct Pages {
     locales: Arc<bilibi_locale::Locales>,
 }
 impl Pages {
-    #[allow(clippy::too_many_arguments)] // Explicit owner services for the shared page contracts.
     pub fn new(
         sales: Arc<Sales>,
         contracts: Arc<PageContracts>,
@@ -706,7 +705,10 @@ impl State {
             return Ok(());
         }
         match event {
-            "filters" => self.list.apply_filters(&params::form_values(v, "filters")),
+            "filters" => self.list.apply_filters(
+                &params::form_values_checked(v, "filters", params::FIELD_LIMIT)
+                    .map_err(bilibi_database::Error::refused)?,
+            ),
             "page" => self.list.put_page(Some(text(v, "page"))),
             "grid" => {
                 let query = self.list.to_params();

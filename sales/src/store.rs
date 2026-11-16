@@ -25,7 +25,6 @@ pub(crate) async fn get(
     let r = c.query_opt("SELECT id,revision,number::text,status,facts FROM commerce_sales_documents WHERE tenant_id=$1 AND company_id=$2 AND id=$3 AND kind=$4", &[&t,&co,&id,&k]).await?;
     r.as_ref().map(|r| row(r, k)).transpose()
 }
-#[allow(clippy::too_many_arguments)]
 pub(crate) async fn list(
     c: &dyn OperationClient,
     t: i64,
@@ -49,7 +48,6 @@ pub(crate) async fn history(
     c.query("SELECT id,from_status,to_status,user_id,impersonator_id,reason,recorded_at FROM commerce_sales_history WHERE tenant_id=$1 AND company_id=$2 AND document_id=$3 ORDER BY id",&[&t,&co,&id]).await?.iter().map(|r|Ok(json!({"id":r.try_get::<_,i64>(0)?,"from":r.try_get::<_,Option<String>>(1)?,"to":r.try_get::<_,String>(2)?,"user_id":r.try_get::<_,i64>(3)?,"impersonator_id":r.try_get::<_,Option<i64>>(4)?,"reason":r.try_get::<_,String>(5)?,"at":jiff::Timestamp::try_from(r.try_get::<_,std::time::SystemTime>(6)?).map_err(|_|bilibi_database::Error::Internal)?.to_string()}))).collect()
 }
 
-#[allow(clippy::too_many_arguments)] // One audited write names its complete prepared snapshot.
 pub(crate) async fn apply(
     tx: &mut MutationTransaction<'_>,
     scope: &Scope,

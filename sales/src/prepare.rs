@@ -118,7 +118,6 @@ async fn currency(
     Ok(currency)
 }
 
-#[allow(clippy::too_many_arguments)] // Services and the caller's transaction stay explicit.
 pub(crate) async fn prepare(
     c: &dyn OperationClient,
     scope: &Scope,
