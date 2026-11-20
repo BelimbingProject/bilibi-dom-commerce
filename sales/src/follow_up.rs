@@ -7,8 +7,8 @@ use bilibi_events::On;
 use bilibi_grid::{Field, FieldType, GridContribution, Source, TableDecl};
 use bilibi_module_registry::{Contribution, Provenance};
 use bilibi_party_ids::OrganisationId;
-use bilibi_watchers::{Action, Trigger, ACTIONS, TRIGGERS};
 use bilibi_tenancy::{ProofFuture, Scope};
+use bilibi_watchers::{Action, Trigger, ACTIONS, TRIGGERS};
 use serde_json::{json, Value};
 
 pub(crate) const MANAGE: &str = "commerce.sales.followup.manage";
