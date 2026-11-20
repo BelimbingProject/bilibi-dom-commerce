@@ -56,6 +56,12 @@ impl Write {
         if self.0 != "order.transition" || v.get("company_id").is_some() {
             return Ok(v.clone());
         }
+        if s.principal() != Some("watchers") {
+            return Err(bilibi_agent_api::invalid(
+                "company_id",
+                "Choose the order's workplace.",
+            ));
+        }
         let id = prepare::integer(v, "id")?;
         let row = c.query_opt("SELECT company_id FROM commerce_sales_documents WHERE tenant_id=$1 AND id=$2 AND kind='order'", &[&s.tenant(), &id]).await?.ok_or(Error::NotFound)?;
         let mut input = v.clone();
