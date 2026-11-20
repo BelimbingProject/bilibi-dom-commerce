@@ -11,6 +11,8 @@ use bilibi_tenancy::{PartyProofs, Scope};
 use serde_json::{json, Value};
 use std::sync::{Arc, OnceLock};
 
+pub(crate) const ORDER_CREATED: &str = "commerce/sales.order_created";
+pub(crate) const ORDER_TRANSITIONED: &str = "commerce/sales.order_transitioned";
 pub(crate) const DELIVERED: &str = "commerce/sales.delivery_delivered";
 pub(crate) const CONFIRMED: &str = "commerce/sales.order_confirmed";
 pub(crate) const STATUS_CHANGED: &str = "commerce/sales.order_status_changed";
@@ -43,6 +45,29 @@ pub(crate) fn bind(
 }
 struct Write(&'static str);
 impl Write {
+    // Watchers binds the order itself; derive its company rather than letting
+    // an automation choose a different workplace.
+    async fn input(
+        &self,
+        c: &dyn OperationClient,
+        s: &Scope,
+        v: &Value,
+    ) -> bilibi_agent_api::Result<Value> {
+        if self.0 != "order.transition" || v.get("company_id").is_some() {
+            return Ok(v.clone());
+        }
+        if s.principal() != Some("watchers") {
+            return Err(bilibi_agent_api::invalid(
+                "company_id",
+                "Choose the order's workplace.",
+            ));
+        }
+        let id = prepare::integer(v, "id")?;
+        let row = c.query_opt("SELECT company_id FROM commerce_sales_documents WHERE tenant_id=$1 AND id=$2 AND kind='order'", &[&s.tenant(), &id]).await?.ok_or(Error::NotFound)?;
+        let mut input = v.clone();
+        input["company_id"] = json!(row.get::<_, i64>(0));
+        Ok(input)
+    }
     async fn prepare(
         &self,
         c: &dyn OperationClient,
@@ -89,7 +114,10 @@ impl WriteHandler for Write {
         s: &'a Scope,
         v: &'a Value,
     ) -> OperationFuture<'a> {
-        Box::pin(async move { Ok(self.prepare(c, s, v, None).await?.review().into()) })
+        Box::pin(async move {
+            let input = self.input(c, s, v).await?;
+            Ok(self.prepare(c, s, &input, None).await?.review().into())
+        })
     }
     fn commit<'a>(
         &'a self,
@@ -98,6 +126,8 @@ impl WriteHandler for Write {
         v: &'a Value,
     ) -> OperationFuture<'a> {
         Box::pin(async move {
+            let input = self.input(tx.sql(), s, v).await?;
+            let v = &input;
             let company = prepare::integer(v, "company_id")?;
             crate::authorize(tx.sql(), s, company, MANAGE).await?;
             bilibi_company::require_writable(tx.sql(), s, company, true)
@@ -122,6 +152,7 @@ impl WriteHandler for Write {
                     .await?
                     .map_err(|e| bilibi_agent_api::invalid("currency_code", e.message()))?;
             }
+            let created = p.old.is_none();
             let changed = p.old.as_ref().is_some_and(|r| r.status != p.target);
             let record = store::apply(
                 tx,
@@ -136,6 +167,22 @@ impl WriteHandler for Write {
                 p.quotation,
             )
             .await?;
+            // A single compact occurrence per order save for automation. The
+            // line-part events below remain unchanged for invoice consumers.
+            if record.kind == "order" && (created || changed) {
+                let services = SERVICES.get().ok_or(bilibi_database::Error::Internal)?;
+                let name = if created {
+                    ORDER_CREATED
+                } else {
+                    ORDER_TRANSITIONED
+                };
+                services.events.record(tx, NewEvent {
+                    name,
+                    subject: &format!("order:{}", record.id),
+                    key: &format!("order:{}:revision:{}", record.id, record.revision),
+                    payload: json!({"company_id":p.company,"order_id":record.id,"revision":record.revision,"status":record.status}),
+                }).await?;
+            }
             if record.kind == "delivery" && record.status == "delivered" && changed {
                 let services = SERVICES.get().ok_or(bilibi_database::Error::Internal)?;
                 let lines = record.facts["lines"]
@@ -265,6 +312,9 @@ fn schema(action: &str) -> Value {
         properties.retain(|key, _| allowed.contains(&key.as_str()));
     }
     schema["required"] = json!(required);
+    if action == "order.transition" {
+        schema["required"] = json!(["id", "revision", "status"]);
+    }
     if action.ends_with("transition") {
         schema["properties"]["status"]["enum"] = if action.starts_with("quotation") {
             json!(["sent", "accepted", "rejected", "expired"])
