@@ -16,7 +16,7 @@ const READ: &str = "commerce.sales.view";
 const KEY: &str = "commerce.sales.order.follow_up";
 const TABLE: &str = "commerce_rule_orders";
 const SOURCE_KIND: &str = "commerce.sales.order";
-const EVENT: &str = "commerce/sales.order_confirmed";
+
 macro_rules! provenance {
     () => {
         Provenance {
@@ -66,9 +66,12 @@ static HANDLER: FollowUp = FollowUp {
 inventory::submit! { Contribution::new(DEFINITIONS, "commerce/sales.follow_up", provenance!(), &Definitions {
     operations: &[Operation { key: KEY, title: "Create a follow-up task", summary: "Create a private task for a staff member about this confirmed record.", keywords: &["follow-up", "task"], capability: MANAGE, input: FollowUp::input, output: || json!({"type":"object"}), handler: Handler::SafeWrite(&HANDLER), channels: Channels::Every, step_up: &[] }], guides: &[],
 }) }
-inventory::submit! { Contribution::new(OFFERED_CAPABILITIES, "watchers:commerce/sales", provenance!(), &OfferedCapabilities { principal: "watchers", capabilities: &[READ, MANAGE] }) }
+inventory::submit! { Contribution::new(OFFERED_CAPABILITIES, "watchers:commerce/sales", provenance!(), &OfferedCapabilities { principal: "watchers", capabilities: &[READ, MANAGE, crate::MANAGE, crate::CONFIRM] }) }
 inventory::submit! { Contribution::new(bilibi_agent_api::job::PRINCIPAL_WRITES, KEY, provenance!(), &bilibi_agent_api::job::PrincipalWrite { principals: &["watchers"] }) }
-inventory::submit! { Contribution::new(TRIGGERS, EVENT, provenance!(), &Trigger { on: On { event: EVENT, versions: &[1] }, title: "A sales order is confirmed", table: TABLE, subject: "/order_id", logical_event: Some("/revision"), version: "revision" }) }
+inventory::submit! { Contribution::new(TRIGGERS, crate::operations::ORDER_CREATED, provenance!(), &Trigger { on: On { event: crate::operations::ORDER_CREATED, versions: &[1] }, title: "A sales order is created", table: TABLE, subject: "/order_id", logical_event: None, version: "revision" }) }
+inventory::submit! { Contribution::new(TRIGGERS, crate::operations::ORDER_TRANSITIONED, provenance!(), &Trigger { on: On { event: crate::operations::ORDER_TRANSITIONED, versions: &[1] }, title: "A sales order status changes", table: TABLE, subject: "/order_id", logical_event: None, version: "revision" }) }
+inventory::submit! { Contribution::new(bilibi_agent_api::job::PRINCIPAL_WRITES, "commerce.sales.order.transition", provenance!(), &bilibi_agent_api::job::PrincipalWrite { principals: &["watchers"] }) }
+inventory::submit! { Contribution::new(ACTIONS, "commerce.sales.order.transition", provenance!(), &Action { title: "Change sales order status", table: TABLE, subject: "id", version: "revision", records: &[crate::operations::STATUS_CHANGED, crate::operations::CONFIRMED, crate::operations::ORDER_TRANSITIONED], approval_capabilities: &[crate::CONFIRM] }) }
 inventory::submit! { Contribution::new(ACTIONS, KEY, provenance!(), &Action { title: "Create a follow-up task", table: TABLE, subject: "record_id", version: "expected_revision", records: &[], approval_capabilities: &[bilibi_activity::MANAGE] }) }
 
 static GRID: GridContribution = GridContribution {

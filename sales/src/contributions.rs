@@ -35,6 +35,8 @@ Service{id:PAGES,factory:|services|Ok(Arc::new(PageService::<Scope,bilibi_databa
 ]}}
 inventory::submit! {Contribution::new(VOCABULARY,"commerce/sales.vocabulary",provenance!(),&VocabularyContribution{
 domains:&["commerce"],verbs:&["confirm"],capabilities:&[C::tenant(VIEW),C::tenant(MANAGE),C::tenant(CONFIRM),C::tenant(crate::follow_up::MANAGE)],roles:&[RoleDefinition{code:"tenant_owner",name:"Tenant Owner",description:"Contributed system role; reconciled explicitly",grant_all:false,capabilities:&[VIEW,MANAGE,CONFIRM,crate::follow_up::MANAGE]}],system_principals:&[]})}
+inventory::submit! {Contribution::new(EVENTS,crate::operations::ORDER_CREATED,provenance!(),&EventType{version:1})}
+inventory::submit! {Contribution::new(EVENTS,crate::operations::ORDER_TRANSITIONED,provenance!(),&EventType{version:1})}
 inventory::submit! {Contribution::new(EVENTS,crate::operations::CONFIRMED,provenance!(),&EventType{version:1})}
 inventory::submit! {Contribution::new(EVENTS,crate::operations::STATUS_CHANGED,provenance!(),&EventType{version:1})}
 inventory::submit! {Contribution::new(PAGE_WRITES,PAGES,provenance!(),&PageWrites{service:PAGES,contracts:&[
