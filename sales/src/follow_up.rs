@@ -1,4 +1,4 @@
-//! Rules offers for one existing owner event and a private Core task.
+//! Watchers offers for one existing owner event and a private Core task.
 use bilibi_activity::FollowUp;
 use bilibi_agent_api::{Channels, Definitions, Handler, Operation, OperationClient, DEFINITIONS};
 use bilibi_authz::{OfferedCapabilities, OFFERED_CAPABILITIES};
@@ -7,8 +7,8 @@ use bilibi_events::On;
 use bilibi_grid::{Field, FieldType, GridContribution, Source, TableDecl};
 use bilibi_module_registry::{Contribution, Provenance};
 use bilibi_party_ids::OrganisationId;
-use bilibi_rules::{Action, Trigger, ACTIONS, TRIGGERS};
 use bilibi_tenancy::{ProofFuture, Scope};
+use bilibi_watchers::{Action, Trigger, ACTIONS, TRIGGERS};
 use serde_json::{json, Value};
 
 pub(crate) const MANAGE: &str = "commerce.sales.followup.manage";
@@ -66,8 +66,8 @@ static HANDLER: FollowUp = FollowUp {
 inventory::submit! { Contribution::new(DEFINITIONS, "commerce/sales.follow_up", provenance!(), &Definitions {
     operations: &[Operation { key: KEY, title: "Create a follow-up task", summary: "Create a private task for a staff member about this confirmed record.", keywords: &["follow-up", "task"], capability: MANAGE, input: FollowUp::input, output: || json!({"type":"object"}), handler: Handler::SafeWrite(&HANDLER), channels: Channels::Every, step_up: &[] }], guides: &[],
 }) }
-inventory::submit! { Contribution::new(OFFERED_CAPABILITIES, "rules:commerce/sales", provenance!(), &OfferedCapabilities { principal: "rules", capabilities: &[READ, MANAGE] }) }
-inventory::submit! { Contribution::new(bilibi_agent_api::job::PRINCIPAL_WRITES, KEY, provenance!(), &bilibi_agent_api::job::PrincipalWrite { principals: &["rules"] }) }
+inventory::submit! { Contribution::new(OFFERED_CAPABILITIES, "watchers:commerce/sales", provenance!(), &OfferedCapabilities { principal: "watchers", capabilities: &[READ, MANAGE] }) }
+inventory::submit! { Contribution::new(bilibi_agent_api::job::PRINCIPAL_WRITES, KEY, provenance!(), &bilibi_agent_api::job::PrincipalWrite { principals: &["watchers"] }) }
 inventory::submit! { Contribution::new(TRIGGERS, EVENT, provenance!(), &Trigger { on: On { event: EVENT, versions: &[1] }, title: "A sales order is confirmed", table: TABLE, subject: "/order_id", logical_event: Some("/revision"), version: "revision" }) }
 inventory::submit! { Contribution::new(ACTIONS, KEY, provenance!(), &Action { title: "Create a follow-up task", table: TABLE, subject: "record_id", version: "expected_revision", records: &[], approval_capabilities: &[bilibi_activity::MANAGE] }) }
 
