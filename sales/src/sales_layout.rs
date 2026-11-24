@@ -189,13 +189,13 @@ contract!(
     "Quotation",
     "quotation",
     &["sent", "accepted", "rejected", "expired"],
-    field!(
+    optional(field!(
         "price_on",
         "Pricing date",
         "Tarikh harga",
         Date,
         PrintValue::Date(jiff::civil::date(2026, 10, 1))
-    ),
+    )),
     field!(
         "valid_until",
         "Valid through",

@@ -618,14 +618,12 @@ impl State {
                             .and_then(|id| id.parse::<i64>().ok())
                             .unwrap_or(0));
                     }
-                    if text(&line, "description").is_empty()
-                        && line["product_id"].is_null()
-                        && text(&line, "quantity").is_empty()
-                    {
-                        None
-                    } else {
-                        Some(line)
-                    }
+                    let populated = line
+                        .as_object()
+                        .expect("object input")
+                        .values()
+                        .any(|value| value.as_str().is_none_or(|text| !text.trim().is_empty()));
+                    populated.then_some(line)
                 })
                 .collect::<Vec<_>>();
             if !lines.is_empty() || v["quotation_number"].is_null() {

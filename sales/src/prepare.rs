@@ -314,7 +314,6 @@ pub(crate) async fn prepare(
         .await?;
         p.assigns_currency = Some(currency.code);
         p.facts = quote.facts;
-        p.facts["quotation_number"] = json!(quote.code);
         p.facts["reference"] = json!(text(v, "reference"));
         p.facts["quotation_id"] = json!(id);
         p.quotation = Some(id);

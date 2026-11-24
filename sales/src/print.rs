@@ -197,15 +197,15 @@ impl Download<Scope, Error> for SalesPrint {
             if kind == "order" && event_date.is_none() {
                 return Err(Error::NotFound);
             }
-            let mut quotation_number = text(&record.facts, "quotation_number").to_owned();
-            if kind == "order" && quotation_number.is_empty() {
-                if let Some(quotation_id) = record.facts["quotation_id"].as_i64() {
-                    quotation_number = self.sales
+            let quotation_number = match (kind, record.facts["quotation_id"].as_i64()) {
+                ("order", Some(quotation_id)) => Some(
+                    self.sales
                         .get(r.scope, company.get(), "quotation", quotation_id)
                         .await?
-                        .code;
-                }
-            }
+                        .code,
+                ),
+                _ => None,
+            };
             let mut client = self.sales.db.get().await?;
             let language = self
                 .settings
@@ -236,7 +236,12 @@ impl Download<Scope, Error> for SalesPrint {
                 document(&compiled, &record, event_date, malay, accent)?
             } else {
                 sales_print_values::render(
-                    &compiled, &record, event_date, &quotation_number, malay, accent,
+                    &compiled,
+                    &record,
+                    event_date,
+                    quotation_number.as_deref(),
+                    malay,
+                    accent,
                 )?
             };
             let version = match selected.origin {

@@ -1,4 +1,4 @@
-use crate::{prepare::text, Record};
+use crate::{Record, prepare::text};
 use bilibi_database::{Error, Result};
 use bilibi_templates::{CompiledPrint, PrintFacts, PrintValue};
 use jiff::civil::Date;
@@ -8,7 +8,7 @@ pub(super) fn render(
     compiled: &CompiledPrint<'_>,
     record: &Record,
     confirmed_on: Option<Date>,
-    quotation_number: &str,
+    quotation_number: Option<&str>,
     malay: bool,
     accent: bilibi_ui::Accent,
 ) -> Result<bilibi_artifacts::InlineDocument> {
@@ -76,16 +76,13 @@ pub(super) fn render(
         ("total", money(currency, facts, "total")?),
     ];
     if record.kind == "quotation" {
-        for key in ["price_on", "valid_until"] {
-            let date = text(facts, key).parse().map_err(|_| Error::Invalid)?;
-            values.push((key, PrintValue::Date(date)));
-        }
+        quotation_dates(facts, &mut values)?;
     } else {
         values.push((
             "confirmed_on",
             PrintValue::Date(confirmed_on.ok_or(Error::NotFound)?),
         ));
-        if !quotation_number.is_empty() {
+        if let Some(quotation_number) = quotation_number {
             values.push(("quotation", PrintValue::Text(quotation_number)));
         }
     }
@@ -102,6 +99,22 @@ pub(super) fn render(
     compiled
         .document(&record.status, &values, accent)
         .map_err(|_| Error::Invalid)
+}
+
+fn quotation_dates(facts: &Value, values: &mut Vec<(&str, PrintValue<'_>)>) -> Result<()> {
+    if let Some(price_on) = facts.get("price_on") {
+        let date = price_on
+            .as_str()
+            .ok_or(Error::Invalid)?
+            .parse()
+            .map_err(|_| Error::Invalid)?;
+        values.push(("price_on", PrintValue::Date(date)));
+    }
+    let expiry = text(facts, "valid_until")
+        .parse()
+        .map_err(|_| Error::Invalid)?;
+    values.push(("valid_until", PrintValue::Date(expiry)));
+    Ok(())
 }
 
 fn money<'a>(currency: &'a str, value: &Value, key: &str) -> Result<PrintValue<'a>> {
@@ -148,7 +161,6 @@ mod tests {
             facts: json!({
                 "currency_code": "MYR",
                 "customer_code": "CUSTOMER-1",
-                "price_on": "2026-01-01",
                 "valid_until": "2026-01-31",
                 "lines": [{
                     "description": "Carton",
@@ -175,14 +187,42 @@ mod tests {
             unit_discount("MYR", line).unwrap(),
             PrintValue::Money { amount, currency: "MYR" } if amount == rust_decimal::Decimal::ZERO
         ));
-        let quotation = QUOTATION.compile("en", QUOTATION.defaults[0].layout).unwrap();
-        assert!(render(&quotation, &record, None, "", false, Default::default()).is_ok());
+        let mut dates = Vec::new();
+        quotation_dates(&record.facts, &mut dates).unwrap();
+        assert!(matches!(
+            dates.as_slice(),
+            [("valid_until", PrintValue::Date(date))] if *date == jiff::civil::date(2026, 1, 31)
+        ));
+        for default in QUOTATION.defaults {
+            let quotation = QUOTATION.compile(default.language, default.layout).unwrap();
+            assert!(
+                render(
+                    &quotation,
+                    &record,
+                    None,
+                    None,
+                    default.language == "ms",
+                    Default::default(),
+                )
+                .is_ok()
+            );
+        }
 
         record.kind = "order".into();
         record.status = "confirmed".into();
         record.code = "12".into();
         let order = ORDER.compile("ms", ORDER.defaults[1].layout).unwrap();
         let confirmed_on = jiff::civil::date(2026, 1, 3);
-        assert!(render(&order, &record, Some(confirmed_on), "42", true, Default::default()).is_ok());
+        assert!(
+            render(
+                &order,
+                &record,
+                Some(confirmed_on),
+                Some("42"),
+                true,
+                Default::default(),
+            )
+            .is_ok()
+        );
     }
 }
