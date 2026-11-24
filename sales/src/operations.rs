@@ -262,11 +262,11 @@ fn schema(action: &str) -> Value {
             "company_id":{"type":"integer","minimum":1},"id":{"type":"integer","minimum":1},"revision":{"type":"integer","minimum":1},"status":{"type":"string","enum":["shipped","delivered","cancelled"]},"reason":{"type":"string","maxLength":500}
         }});
     }
-    let line = json!({"type":"object","properties":{"product_id":{"type":"integer","minimum":1},"description":{"type":"string","maxLength":500},"quantity":{"type":"string","maxLength":30},"unit":{"type":"string","maxLength":80},"unit_price":{"type":"string","maxLength":30},"tax_code":{"type":"string","maxLength":50},"tax_rate":{"type":"string","maxLength":30}}});
+    let line = json!({"type":"object","properties":{"product_id":{"type":"integer","minimum":1},"description":{"type":"string","maxLength":500},"quantity":{"type":"string","maxLength":30},"unit":{"type":"string","maxLength":80},"unit_price":{"type":"string","maxLength":30},"unit_discount":{"type":"string","maxLength":30},"tax_code":{"type":"string","maxLength":50},"tax_rate":{"type":"string","maxLength":30}}});
     let mut schema = json!({"type":"object","required":["company_id"],"properties":{
  "company_id":{"type":"integer","minimum":1},"id":{"type":"integer","minimum":1},"revision":{"type":"integer","minimum":1},
  "price_on":{"type":"string","maxLength":10},
- "customer_kind":{"type":"string","enum":["company","person"]},"customer_code":{"type":"string","maxLength":255},"currency_code":{"type":"string","maxLength":3},"valid_until":{"type":"string","maxLength":10},"reference":{"type":"string","maxLength":200},"quotation_id":{"type":"integer","minimum":1},"quotation_number":{"type":"integer","minimum":1},"status":{"type":"string","enum":["sent","accepted","rejected","expired","confirmed","cancelled"]},"reason":{"type":"string","maxLength":500},
+ "customer_kind":{"type":"string","enum":["company","person"]},"customer_code":{"type":"string","maxLength":255},"billing_address":{"type":"string","maxLength":1600},"currency_code":{"type":"string","maxLength":3},"valid_until":{"type":"string","maxLength":10},"reference":{"type":"string","maxLength":200},"quotation_id":{"type":"integer","minimum":1},"quotation_number":{"type":"integer","minimum":1},"status":{"type":"string","enum":["sent","accepted","rejected","expired","confirmed","cancelled"]},"reason":{"type":"string","maxLength":500},
  "lines":{"type":"array","items":line}}});
     let (allowed, required): (&[&str], &[&str]) = match action {
         "quotation.create" => (
@@ -274,6 +274,7 @@ fn schema(action: &str) -> Value {
                 "company_id",
                 "customer_kind",
                 "customer_code",
+                "billing_address",
                 "currency_code",
                 "price_on",
                 "valid_until",
@@ -294,6 +295,7 @@ fn schema(action: &str) -> Value {
                 "company_id",
                 "customer_kind",
                 "customer_code",
+                "billing_address",
                 "currency_code",
                 "price_on",
                 "reference",

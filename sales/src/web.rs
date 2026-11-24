@@ -503,6 +503,10 @@ impl State {
                     .kind(InputKind::Date),
             );
         }
+        fields.push(
+            self.field("billing_address", "Billing address")
+                .kind(InputKind::Textarea),
+        );
         if self.kind == "order" {
             fields.push(self.field("quotation_number","Accepted quotation number").hint("Leave blank to enter an order directly. A quotation supplies the customer and lines, so leave them empty below."));
         }
@@ -531,6 +535,7 @@ impl State {
                     ("quantity", "Quantity"),
                     ("unit", "Unit"),
                     ("unit_price", "Unit price"),
+                    ("unit_discount", "Unit discount"),
                     ("tax_code", "Tax code"),
                     ("tax_rate", "Tax rate (%)"),
                 ] {
@@ -593,6 +598,7 @@ impl State {
                         "quantity",
                         "unit",
                         "unit_price",
+                        "unit_discount",
                         "tax_code",
                         "tax_rate",
                     ] {
@@ -1134,6 +1140,7 @@ impl State {
             },
             heading: self.heading(),
             kind: self.kind,
+            order_has_confirmation: self.history.iter().any(|event| event["to"] == "confirmed"),
             delivery_link: self
                 .record
                 .as_ref()
@@ -1217,6 +1224,7 @@ struct View<'a> {
     kind: &'a str,
     record_id: String,
     delivery_link: String,
+    order_has_confirmation: bool,
     source_loaded: bool,
     back: &'a str,
     is_detail: bool,
@@ -1260,7 +1268,7 @@ fn posted(v: &Value) -> HashMap<String, String> {
         .filter_map(|(k, v)| {
             let key = k.strip_prefix("form[")?.strip_suffix(']')?;
             let value = v.as_str()?;
-            let value = if key == "ship_to" {
+            let value = if matches!(key, "ship_to" | "billing_address") {
                 value.to_owned()
             } else {
                 value.chars().take(1024).collect()

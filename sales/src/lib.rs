@@ -8,6 +8,8 @@ mod operations;
 mod prepare;
 mod print;
 mod records;
+mod sales_layout;
+mod sales_print_values;
 mod store;
 mod web;
 

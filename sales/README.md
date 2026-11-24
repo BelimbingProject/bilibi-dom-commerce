@@ -23,6 +23,14 @@ Quotations move `draft → sent → accepted | rejected | expired`. Sales orders
 
 `commerce.sales.view` opens read pages. `commerce.sales.manage` permits writes; confirmation also requires `commerce.sales.confirm`. Tenant Owner receives these and `commerce.sales.followup.manage` through the vocabulary contribution. The company desk proof still applies to each call.
 
+## Quotations and order confirmations
+
+**Print quotation** opens the private copy on the existing quotation page. It shows the original quotation number, pricing date, expiry, status, frozen customer name and the optional billing address entered on the draft. **Print order confirmation** is available once an order has a recorded confirmation. A copy printed after cancellation shows the cancellation and its original confirmation date.
+
+Each quotation or direct order line can take a `unit_discount` in the document currency. Commerce freezes the list price, discount and charged price, and computes tax on the charged subtotal. Conversion from an accepted quotation keeps the same customer, billing address, commercial lines and original quotation number. The order receives its own number. Finance continues to receive the charged unit price and the same line and tax totals.
+
+The two documents use English and Bahasa Melayu defaults in Base Templates and private offline rendering in Base Artifacts. The company can review and publish a Letter layout in Customisations.
+
 ## Delivery orders
 
 Open **Delivery orders**, choose **+ Delivery order**, enter a confirmed sales order number and load the lines. Each line shows ordered, delivered, remaining and available quantities. The form starts with all available quantities; reduce a quantity for a partial delivery, or leave it blank or enter zero to skip that line. Save the draft, review the change to shipped, then review the change to delivered when the customer receives it. A delivery cannot skip the shipped stage.

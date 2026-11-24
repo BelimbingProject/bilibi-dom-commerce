@@ -1,0 +1,82 @@
+{
+  "blocks": [
+    {
+      "type": "heading",
+      "text": "Quotation"
+    },
+    {
+      "type": "field",
+      "field": "number"
+    },
+    {
+      "type": "field",
+      "field": "state"
+    },
+    {
+      "type": "field",
+      "field": "price_on"
+    },
+    {
+      "type": "field",
+      "field": "valid_until"
+    },
+    {
+      "type": "field",
+      "field": "issuer"
+    },
+    {
+      "type": "field",
+      "field": "customer"
+    },
+    {
+      "type": "field",
+      "field": "address"
+    },
+    {
+      "type": "field",
+      "field": "reference"
+    },
+    {
+      "type": "table",
+      "rows": "lines",
+      "columns": [
+        {
+          "field": "item"
+        },
+        {
+          "field": "quantity"
+        },
+        {
+          "field": "price"
+        },
+        {
+          "field": "discount"
+        },
+        {
+          "field": "net"
+        },
+        {
+          "field": "tax_code"
+        },
+        {
+          "field": "tax"
+        },
+        {
+          "field": "total"
+        }
+      ]
+    },
+    {
+      "type": "field",
+      "field": "subtotal"
+    },
+    {
+      "type": "field",
+      "field": "tax_total"
+    },
+    {
+      "type": "field",
+      "field": "total"
+    }
+  ]
+}
