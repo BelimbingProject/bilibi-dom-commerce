@@ -85,7 +85,7 @@ pub(crate) static CONTRACT: PrintContract = PrintContract {
         text(
             "issuer",
             &[("en", "From"), ("ms", "Daripada")],
-            "Example Works\nRegistration: 202610001234",
+            "Example Works",
         ),
         text(
             "recipient",

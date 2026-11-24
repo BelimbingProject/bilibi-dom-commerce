@@ -189,13 +189,7 @@ pub(crate) async fn prepare(
         _ => return Err(bilibi_database::Error::Internal.into()),
     };
     let recipient = parties.party_identity(c, s, customer).await?;
-    let (issuer, masked) = bilibi_company::detail(c, s, p.company).await?;
-    if masked.contains("registration_number") {
-        return Err(bilibi_agent_api::invalid(
-            "company_id",
-            "The issuing company's registration number is restricted.",
-        ));
-    }
+    let (issuer, _) = bilibi_company::detail(c, s, p.company).await?;
     let ship_to = text(v, "ship_to");
     if !ship_to.is_empty() {
         required(v, "ship_to", 1600)?;
@@ -204,7 +198,7 @@ pub(crate) async fn prepare(
         "order_id":order.id,"order_number":order.code,"order_revision":order.revision,
         "customer_kind":order.facts["customer_kind"],"customer_id":customer_id,
         "customer_code":order.facts["customer_code"],"customer_name":recipient.name,
-        "issuer_name":issuer.display_name(),"issuer_registration":issuer.registration_number,
+        "issuer_name":issuer.display_name(),
         "ship_to":ship_to,"reference":text(v,"reference"),"lines":lines,
     });
     if text(v, "reference").chars().count() > 200 {

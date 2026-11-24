@@ -93,18 +93,6 @@ fn document(
         (true, "cancelled") => "Dibatalkan",
         _ => return Err(Error::Invalid),
     };
-    let issuer_name = text(facts, "issuer_name");
-    let issuer_reg = text(facts, "issuer_registration");
-    let issuer = if issuer_reg.is_empty() {
-        issuer_name.to_owned()
-    } else {
-        let label = if malay {
-            "No. pendaftaran"
-        } else {
-            "Registration no."
-        };
-        format!("{issuer_name}\n{label}: {issuer_reg}")
-    };
     let address = match text(facts, "ship_to") {
         "" if malay => "Alamat belum direkodkan",
         "" => "Address has not been recorded",
@@ -141,7 +129,7 @@ fn document(
     let rows: Vec<PrintFacts<'_>> = rows.iter().map(|fields| fields.as_slice()).collect();
     let mut values = vec![
         ("number", PrintValue::Text(&record.code)),
-        ("issuer", PrintValue::Text(&issuer)),
+        ("issuer", PrintValue::Text(text(facts, "issuer_name"))),
         ("recipient", PrintValue::Text(text(facts, "customer_name"))),
         ("ship_to", PrintValue::Text(address)),
         ("order", PrintValue::Text(text(facts, "order_number"))),
@@ -163,9 +151,6 @@ fn document(
 impl Download<Scope, Error> for DeliveryPrint {
     fn serve<'a>(&'a self, r: DownloadRequest<'a, Scope>) -> DownloadFuture<'a, Error> {
         Box::pin(async move {
-            if r.operation != "delivery_pdf" {
-                return Err(Error::NotFound);
-            }
             let company = r.scope.current_company().ok_or(Error::Forbidden)?;
             let id = r
                 .path

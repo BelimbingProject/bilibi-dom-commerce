@@ -1260,7 +1260,12 @@ fn posted(v: &Value) -> HashMap<String, String> {
         .filter_map(|(k, v)| {
             let key = k.strip_prefix("form[")?.strip_suffix(']')?;
             let value = v.as_str()?;
-            Some((key.to_owned(), value.chars().take(1024).collect()))
+            let value = if key == "ship_to" {
+                value.to_owned()
+            } else {
+                value.chars().take(1024).collect()
+            };
+            Some((key.to_owned(), value))
         })
         .take(810)
         .collect()
