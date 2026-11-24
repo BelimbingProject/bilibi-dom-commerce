@@ -1,0 +1,72 @@
+{
+  "blocks": [
+    {
+      "type": "heading",
+      "text": "Pesanan penghantaran"
+    },
+    {
+      "type": "field",
+      "field": "number"
+    },
+    {
+      "type": "field",
+      "field": "status"
+    },
+    {
+      "type": "field",
+      "field": "ship_date"
+    },
+    {
+      "type": "field",
+      "field": "issuer"
+    },
+    {
+      "type": "field",
+      "field": "recipient"
+    },
+    {
+      "type": "field",
+      "field": "ship_to"
+    },
+    {
+      "type": "field",
+      "field": "order"
+    },
+    {
+      "type": "field",
+      "field": "reference"
+    },
+    {
+      "type": "table",
+      "rows": "lines",
+      "columns": [
+        {
+          "field": "order_line"
+        },
+        {
+          "field": "product"
+        },
+        {
+          "field": "item"
+        },
+        {
+          "field": "ordered"
+        },
+        {
+          "field": "quantity"
+        },
+        {
+          "field": "unit"
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "text": "Disediakan oleh _______________________"
+    },
+    {
+      "type": "paragraph",
+      "text": "Diterima oleh _______________________"
+    }
+  ]
+}

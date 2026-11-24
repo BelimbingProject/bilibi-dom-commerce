@@ -478,6 +478,9 @@ impl State {
                 self.field("order_number", "Sales order number")
                     .hint("Load the lines to choose full or partial quantities."),
                 self.field("reference", "Reference"),
+                self.field("ship_to", "Ship-to address")
+                    .kind(InputKind::Textarea)
+                    .hint("This address is printed on the delivery order."),
             ];
         }
         let mut fields = vec![

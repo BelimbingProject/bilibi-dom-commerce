@@ -5,7 +5,8 @@ use crate::{
     store, Record,
 };
 use bilibi_agent_api::{Error, OperationClient, Result};
-use bilibi_tenancy::Scope;
+use bilibi_party_ids::{OrganisationId, PartyId, PersonId};
+use bilibi_tenancy::{PartyProofs, Scope};
 use rust_decimal::Decimal;
 use serde_json::{json, Value};
 use std::{
@@ -76,6 +77,7 @@ pub(crate) async fn prepare(
     s: &Scope,
     v: &Value,
     mut p: Prepared,
+    parties: &PartyProofs,
 ) -> Result<Prepared> {
     if let Some(old) = &p.old {
         let to = required(v, "status", 20)?;
@@ -176,7 +178,35 @@ pub(crate) async fn prepare(
         }
         lines.push(json!({"line_number":lines.len()+1,"order_line_number":n,"product_id":original["product_id"],"product_code":original["product_code"],"description":original["description"],"unit":original["unit"],"ordered_quantity":original["quantity"],"quantity":quantity.to_string()}));
     }
-    p.facts = json!({"order_id":order.id,"order_number":order.code,"order_revision":order.revision,"customer_kind":order.facts["customer_kind"],"customer_id":order.facts["customer_id"],"customer_code":order.facts["customer_code"],"reference":text(v,"reference"),"lines":lines});
+    let customer_id = integer(&order.facts, "customer_id")?;
+    let customer = match text(&order.facts, "customer_kind") {
+        "company" => PartyId::Organisation(
+            OrganisationId::new(customer_id).map_err(|_| bilibi_database::Error::Internal)?,
+        ),
+        "person" => PartyId::Person(
+            PersonId::new(customer_id).map_err(|_| bilibi_database::Error::Internal)?,
+        ),
+        _ => return Err(bilibi_database::Error::Internal.into()),
+    };
+    let recipient = parties.party_identity(c, s, customer).await?;
+    let (issuer, masked) = bilibi_company::detail(c, s, p.company).await?;
+    if masked.contains("registration_number") {
+        return Err(bilibi_agent_api::invalid(
+            "company_id",
+            "The issuing company's registration number is restricted.",
+        ));
+    }
+    let ship_to = text(v, "ship_to");
+    if !ship_to.is_empty() {
+        required(v, "ship_to", 1600)?;
+    }
+    p.facts = json!({
+        "order_id":order.id,"order_number":order.code,"order_revision":order.revision,
+        "customer_kind":order.facts["customer_kind"],"customer_id":customer_id,
+        "customer_code":order.facts["customer_code"],"customer_name":recipient.name,
+        "issuer_name":issuer.display_name(),"issuer_registration":issuer.registration_number,
+        "ship_to":ship_to,"reference":text(v,"reference"),"lines":lines,
+    });
     if text(v, "reference").chars().count() > 200 {
         return Err(bilibi_agent_api::invalid(
             "reference",

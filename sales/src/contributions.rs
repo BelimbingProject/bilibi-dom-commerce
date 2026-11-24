@@ -23,14 +23,18 @@ macro_rules! provenance {
     };
 }
 inventory::submit! {Module{id:MODULE,layer:Layer::Domains,
-dependencies:&["base/watchers","core/activity","base/agent_api","base/artifacts","base/authz","base/database","base/datetime","base/events","base/grid","base/locale","base/menu","base/records","base/party_ids","base/tenancy","base/ui","core/company","core/currency","core/product"],
+dependencies:&["base/watchers","core/activity","base/agent_api","base/artifacts","base/branding","base/settings","base/templates","base/authz","base/database","base/datetime","base/events","base/grid","base/locale","base/menu","base/records","base/party_ids","base/tenancy","base/ui","core/company","core/currency","core/product"],
 migrations:&[("commerce-sales-001-sales",include_str!("../migrations/001-sales.sql")),("commerce-sales-002-deliveries",include_str!("../migrations/002-deliveries.sql")),("commerce-sales-003-core-products",include_str!("../migrations/003-core-products.sql"))],
 services:&[
 Service{id:SERVICE,factory:|services|{
 crate::operations::bind(services.get::<Events>(bilibi_events::SERVICE)?,services.get(bilibi_records::SERVICE)?,services.get("base/tenancy.parties")?,services.get(bilibi_currency::SERVICE)?,services.get(bilibi_product::SERVICE)?)?;
 Ok(Arc::new(Sales::new(services.get::<Db>("base/database.pool")?.as_ref().clone())))
 }},
-Service{id:crate::print::SERVICE,factory:|services|Ok(Arc::new(bilibi_ui::download::DownloadService::<Scope,bilibi_database::Error>(Arc::new(crate::print::DeliveryPrint::new(services.get::<Sales>(SERVICE)?,services.get("base/artifacts.store")?)))))},
+Service{id:crate::print::SERVICE,factory:|services|Ok(Arc::new(bilibi_ui::download::DownloadService::<Scope,bilibi_database::Error>(Arc::new(crate::print::DeliveryPrint::new(
+    services.get::<Sales>(SERVICE)?,services.get("base/artifacts.store")?,
+    services.get(bilibi_templates::SERVICE)?,services.get(bilibi_branding::SERVICE)?,
+    services.get("base/settings.store")?
+)))))},
 Service{id:PAGES,factory:|services|Ok(Arc::new(PageService::<Scope,bilibi_database::Error>(Arc::new(crate::web::Pages::new(services.get::<Sales>(SERVICE)?,services.get(bilibi_agent_api::page::SERVICE)?,services.get(bilibi_grid::PAGE_VIEWS)?,services.get("base/datetime.display")?,services.get("base/locale.locales")?,services.get(bilibi_currency::SERVICE)?,services.get(bilibi_product::SERVICE)?,services.get(bilibi_records::SERVICE)?,services.get("base/tenancy.parties")?)))))},
 ]}}
 inventory::submit! {Contribution::new(VOCABULARY,"commerce/sales.vocabulary",provenance!(),&VocabularyContribution{
