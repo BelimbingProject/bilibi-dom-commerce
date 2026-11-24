@@ -34,7 +34,8 @@
     },
     {
       "type": "field",
-      "field": "reference"
+      "field": "reference",
+      "label": "Reference"
     },
     {
       "type": "table",
