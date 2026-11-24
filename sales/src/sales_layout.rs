@@ -43,7 +43,13 @@ const COLUMNS: &[PrintField] = &[
         Text,
         PrintValue::Text("2 EA")
     ),
-    field!("price", "Unit price", "Harga seunit", Money, amount(10_000)),
+    field!(
+        "price",
+        "List unit price",
+        "Harga senarai seunit",
+        Money,
+        amount(10_000)
+    ),
     field!(
         "discount",
         "Unit discount",
@@ -97,13 +103,13 @@ macro_rules! contract {
                 ),
                 $date,
                 $extra,
-                field!(
+                optional(field!(
                     "issuer",
                     "Issued by",
                     "Pengeluar",
                     Text,
                     PrintValue::Text("Example Works Sdn. Bhd.")
-                ),
+                )),
                 field!(
                     "customer",
                     "Customer",
@@ -182,7 +188,7 @@ contract!(
     "commerce.sales.quotation",
     "Quotation",
     "quotation",
-    &["draft", "sent", "accepted", "rejected", "expired"],
+    &["sent", "accepted", "rejected", "expired"],
     field!(
         "price_on",
         "Pricing date",

@@ -25,7 +25,7 @@ Quotations move `draft → sent → accepted | rejected | expired`. Sales orders
 
 ## Quotations and order confirmations
 
-**Print quotation** opens the private copy on the existing quotation page. It shows the original quotation number, pricing date, expiry, status, frozen customer name and the optional billing address entered on the draft. **Print order confirmation** is available once an order has a recorded confirmation. A copy printed after cancellation shows the cancellation and its original confirmation date.
+**Print quotation** opens the private copy on the existing quotation page after the quotation is sent. It shows the original quotation number, pricing date, expiry, status, frozen customer name and the optional billing address entered on the draft. **Print order confirmation** is available once an order has a recorded confirmation. A copy printed after cancellation shows the cancellation and its original confirmation date.
 
 Each quotation or direct order line can take a `unit_discount` in the document currency. Commerce freezes the list price, discount and charged price, and computes tax on the charged subtotal. Conversion from an accepted quotation keeps the same customer, billing address, commercial lines and original quotation number. The order receives its own number. Finance continues to receive the charged unit price and the same line and tax totals.
 

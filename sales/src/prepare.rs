@@ -322,13 +322,7 @@ pub(crate) async fn prepare(
     }
     let currency = currency(c, scope, text(v, "currency_code"), currencies, tx).await?;
     p.assigns_currency = Some(currency.code.clone());
-    let (issuer, masked) = bilibi_company::detail(c, scope, co).await?;
-    if masked.contains("registration_number") {
-        return Err(bilibi_agent_api::invalid(
-            "company_id",
-            "The issuing company's registration number is restricted.",
-        ));
-    }
+    let (issuer, _) = bilibi_company::detail(c, scope, co).await?;
     let issuer_name = issuer.legal_name.as_deref().unwrap_or(issuer.name.as_str());
     let billing_address = text(v, "billing_address");
     if !billing_address.is_empty() {
@@ -426,7 +420,7 @@ pub(crate) async fn prepare(
     } else {
         None
     };
-    p.facts = json!({"customer_kind":customer_kind,"customer_id":identity.record_id(),"customer_code":customer_code,"customer_name":identity.name,"billing_address":billing_address,"issuer_name":issuer_name,"issuer_registration":issuer.registration_number,"currency_code":currency.code,"price_on":price_on,"valid_until":valid_until,"reference":text(v,"reference"),"lines":lines,"subtotal":money(subtotal,places).to_string(),"tax_total":money(tax_total,places).to_string(),"total":money(subtotal+tax_total,places).to_string()});
+    p.facts = json!({"customer_kind":customer_kind,"customer_id":identity.record_id(),"customer_code":customer_code,"customer_name":identity.name,"billing_address":billing_address,"issuer_name":issuer_name,"currency_code":currency.code,"price_on":price_on,"valid_until":valid_until,"reference":text(v,"reference"),"lines":lines,"subtotal":money(subtotal,places).to_string(),"tax_total":money(tax_total,places).to_string(),"total":money(subtotal+tax_total,places).to_string()});
     if text(v, "reference").chars().count() > 200 {
         return Err(bilibi_agent_api::invalid(
             "reference",

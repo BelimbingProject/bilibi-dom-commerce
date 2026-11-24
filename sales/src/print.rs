@@ -74,7 +74,11 @@ impl Owner for SalesPrint {
                 .ok()
                 .filter(|id| *id > 0)
                 .ok_or(Error::NotFound)?;
-            c.query_opt("SELECT id FROM commerce_sales_documents WHERE tenant_id=$1 AND company_id=$2 AND kind=$3 AND id=$4", &[&s.tenant(),&company.get(),&kind,&id]).await?.ok_or(Error::NotFound)?;
+            let row = c.query_opt("SELECT status FROM commerce_sales_documents WHERE tenant_id=$1 AND company_id=$2 AND kind=$3 AND id=$4", &[&s.tenant(),&company.get(),&kind,&id]).await?.ok_or(Error::NotFound)?;
+            let status: &str = row.try_get(0)?;
+            if kind == "quotation" && !sales_layout::QUOTATION.states.contains(&status) {
+                return Err(Error::NotFound);
+            }
             Ok(())
         })
     }
@@ -176,6 +180,9 @@ impl Download<Scope, Error> for SalesPrint {
                 .filter(|id| *id > 0)
                 .ok_or(Error::NotFound)?;
             let record = self.sales.get(r.scope, company.get(), kind, id).await?;
+            if !contract.states.contains(&record.status.as_str()) {
+                return Err(Error::NotFound);
+            }
             let event_date = if let Some(state) = state_date.filter(|_| record.status != "draft") {
                 self.sales
                     .history(r.scope, company.get(), id)
@@ -189,6 +196,15 @@ impl Download<Scope, Error> for SalesPrint {
             };
             if kind == "order" && event_date.is_none() {
                 return Err(Error::NotFound);
+            }
+            let mut quotation_number = text(&record.facts, "quotation_number").to_owned();
+            if kind == "order" && quotation_number.is_empty() {
+                if let Some(quotation_id) = record.facts["quotation_id"].as_i64() {
+                    quotation_number = self.sales
+                        .get(r.scope, company.get(), "quotation", quotation_id)
+                        .await?
+                        .code;
+                }
             }
             let mut client = self.sales.db.get().await?;
             let language = self
@@ -219,7 +235,9 @@ impl Download<Scope, Error> for SalesPrint {
             let inline = if kind == "delivery" {
                 document(&compiled, &record, event_date, malay, accent)?
             } else {
-                sales_print_values::render(&compiled, &record, event_date, malay, accent)?
+                sales_print_values::render(
+                    &compiled, &record, event_date, &quotation_number, malay, accent,
+                )?
             };
             let version = match selected.origin {
                 Origin::Packaged { version } => format!("packaged-{version}"),

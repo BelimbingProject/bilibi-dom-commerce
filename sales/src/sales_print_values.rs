@@ -8,12 +8,12 @@ pub(super) fn render(
     compiled: &CompiledPrint<'_>,
     record: &Record,
     confirmed_on: Option<Date>,
+    quotation_number: &str,
     malay: bool,
     accent: bilibi_ui::Accent,
 ) -> Result<bilibi_artifacts::InlineDocument> {
     let facts = &record.facts;
     let state = match record.status.as_str() {
-        "draft" => ["Draft", "Draf"],
         "sent" => ["Sent", "Dihantar"],
         "accepted" => ["Accepted", "Diterima"],
         "rejected" => ["Rejected", "Ditolak"],
@@ -51,8 +51,8 @@ pub(super) fn render(
             Ok([
                 ("item", PrintValue::Text(&descriptions[index])),
                 ("quantity", PrintValue::Text(&quantities[index])),
-                ("price", money(currency, line, "list_unit_price")?),
-                ("discount", money(currency, line, "unit_discount")?),
+                ("price", list_price(currency, line)?),
+                ("discount", unit_discount(currency, line)?),
                 ("net", money(currency, line, "subtotal")?),
                 ("tax_code", PrintValue::Text(&taxes[index])),
                 ("tax", money(currency, line, "tax_total")?),
@@ -61,27 +61,14 @@ pub(super) fn render(
         })
         .collect::<Result<_>>()?;
     let rows: Vec<PrintFacts<'_>> = rows.iter().map(|row| row.as_slice()).collect();
-    let issuer = text(facts, "issuer_name");
-    let registration = text(facts, "issuer_registration");
-    let registration_label = if malay {
-        "No. pendaftaran"
-    } else {
-        "Registration no."
-    };
-    let issuer = if registration.is_empty() {
-        issuer.to_owned()
-    } else {
-        format!("{issuer}\n{registration_label}: {registration}")
-    };
-    let customer = format!(
-        "{}\n{}",
-        text(facts, "customer_name"),
-        text(facts, "customer_code")
-    );
+    let customer = [text(facts, "customer_name"), text(facts, "customer_code")]
+        .into_iter()
+        .filter(|value| !value.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n");
     let mut values = vec![
         ("number", PrintValue::Text(record.code.as_str())),
         ("state", PrintValue::Text(state)),
-        ("issuer", PrintValue::Text(&issuer)),
         ("customer", PrintValue::Text(&customer)),
         ("lines", PrintValue::Rows(&rows)),
         ("subtotal", money(currency, facts, "subtotal")?),
@@ -98,12 +85,15 @@ pub(super) fn render(
             "confirmed_on",
             PrintValue::Date(confirmed_on.ok_or(Error::NotFound)?),
         ));
-        let reference = text(facts, "quotation_number");
-        if !reference.is_empty() {
-            values.push(("quotation", PrintValue::Text(reference)));
+        if !quotation_number.is_empty() {
+            values.push(("quotation", PrintValue::Text(quotation_number)));
         }
     }
-    for (field, fact) in [("address", "billing_address"), ("reference", "reference")] {
+    for (field, fact) in [
+        ("issuer", "issuer_name"),
+        ("address", "billing_address"),
+        ("reference", "reference"),
+    ] {
         let value = text(facts, fact);
         if !value.is_empty() {
             values.push((field, PrintValue::Text(value)));
@@ -119,4 +109,80 @@ fn money<'a>(currency: &'a str, value: &Value, key: &str) -> Result<PrintValue<'
         amount: text(value, key).parse().map_err(|_| Error::Invalid)?,
         currency,
     })
+}
+
+fn list_price<'a>(currency: &'a str, line: &Value) -> Result<PrintValue<'a>> {
+    let key = if line.get("list_unit_price").is_some() {
+        "list_unit_price"
+    } else {
+        "unit_price"
+    };
+    money(currency, line, key)
+}
+
+fn unit_discount<'a>(currency: &'a str, line: &Value) -> Result<PrintValue<'a>> {
+    if line.get("unit_discount").is_some() {
+        money(currency, line, "unit_discount")
+    } else {
+        Ok(PrintValue::Money {
+            amount: rust_decimal::Decimal::ZERO,
+            currency,
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::sales_layout::{ORDER, QUOTATION};
+    use serde_json::json;
+
+    #[test]
+    fn pre_upgrade_sales_records_compile_to_printable_documents() {
+        let mut record = Record {
+            id: 1,
+            revision: 2,
+            kind: "quotation".into(),
+            code: "42".into(),
+            status: "sent".into(),
+            facts: json!({
+                "currency_code": "MYR",
+                "customer_code": "CUSTOMER-1",
+                "price_on": "2026-01-01",
+                "valid_until": "2026-01-31",
+                "lines": [{
+                    "description": "Carton",
+                    "quantity": "2",
+                    "unit": "EA",
+                    "unit_price": "50.00",
+                    "tax_code": "SV6",
+                    "tax_rate": "6",
+                    "subtotal": "100.00",
+                    "tax_total": "6.00",
+                    "total": "106.00"
+                }],
+                "subtotal": "100.00",
+                "tax_total": "6.00",
+                "total": "106.00"
+            }),
+        };
+        let line = &record.facts["lines"][0];
+        assert!(matches!(
+            list_price("MYR", line).unwrap(),
+            PrintValue::Money { amount, currency: "MYR" } if amount == rust_decimal::Decimal::from(50)
+        ));
+        assert!(matches!(
+            unit_discount("MYR", line).unwrap(),
+            PrintValue::Money { amount, currency: "MYR" } if amount == rust_decimal::Decimal::ZERO
+        ));
+        let quotation = QUOTATION.compile("en", QUOTATION.defaults[0].layout).unwrap();
+        assert!(render(&quotation, &record, None, "", false, Default::default()).is_ok());
+
+        record.kind = "order".into();
+        record.status = "confirmed".into();
+        record.code = "12".into();
+        let order = ORDER.compile("ms", ORDER.defaults[1].layout).unwrap();
+        let confirmed_on = jiff::civil::date(2026, 1, 3);
+        assert!(render(&order, &record, Some(confirmed_on), "42", true, Default::default()).is_ok());
+    }
 }
