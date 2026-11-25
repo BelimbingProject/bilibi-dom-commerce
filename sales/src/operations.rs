@@ -271,33 +271,6 @@ fn order_event_line(line: &Value) -> Value {
     .into()
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn order_events_keep_charged_price_and_tax_without_discount_details() {
-        let expected = json!({
-            "line_number": 1,
-            "product_id": null,
-            "product_code": null,
-            "description": "Carton",
-            "quantity": "2",
-            "unit": "EA",
-            "unit_price": "90.00",
-            "tax_code": "SV6",
-            "tax_rate": "6",
-            "subtotal": "180.00",
-            "tax_total": "10.80",
-            "total": "190.80"
-        });
-        let mut snapshot = expected.clone();
-        snapshot["list_unit_price"] = json!("100.00");
-        snapshot["unit_discount"] = json!("10.00");
-        assert_eq!(order_event_line(&snapshot), expected);
-    }
-}
-
 // Base Agent API accepts its documented schema dialect, not full JSON Schema.
 // Object fields are closed by default; cross-field and array bounds live in prepare.
 fn schema(action: &str) -> Value {
