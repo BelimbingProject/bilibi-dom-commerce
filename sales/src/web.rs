@@ -1139,7 +1139,9 @@ impl State {
             heading: self.heading(),
             kind: self.kind,
             quotation_can_print: self.record.as_ref().is_some_and(|record| {
-                crate::sales_layout::QUOTATION.states.contains(&record.status.as_str())
+                crate::sales_layout::QUOTATION
+                    .states
+                    .contains(&record.status.as_str())
             }),
             order_has_confirmation: self.history.iter().any(|event| event["to"] == "confirmed"),
             delivery_link: self
