@@ -221,10 +221,11 @@ pub(crate) async fn prepare(
     {
         if v.get("customer_code").is_some_and(|x| !x.is_null())
             || v.get("lines").is_some_and(|x| !x.is_null())
+            || !text(v, "billing_address").is_empty()
         {
             return Err(bilibi_agent_api::invalid(
                 "quotation_id",
-                "An order from a quotation uses that quotation's customer and lines. Remove the customer and lines, or clear the quotation.",
+                "An order from a quotation uses its customer, billing address and lines. Clear those entries or clear the quotation.",
             ));
         }
         let id = if v["quotation_id"].as_i64().is_some() {
@@ -320,6 +321,12 @@ pub(crate) async fn prepare(
     }
     let currency = currency(c, scope, text(v, "currency_code"), currencies, tx).await?;
     p.assigns_currency = Some(currency.code.clone());
+    let (issuer, _) = bilibi_company::detail(c, scope, co).await?;
+    let issuer_name = issuer.legal_name.as_deref().unwrap_or(issuer.name.as_str());
+    let billing_address = text(v, "billing_address");
+    if !billing_address.is_empty() {
+        required(v, "billing_address", 1600)?;
+    }
     let places = currency.minor_units;
     let price_on = if text(v, "price_on").is_empty() {
         today()
@@ -367,7 +374,21 @@ pub(crate) async fn prepare(
             product_code = json!(product.code);
         }
         let quantity = decimal(&source, "quantity", true)?;
-        let price = money(decimal(&source, "unit_price", false)?, places);
+        let list_price = money(decimal(&source, "unit_price", false)?, places);
+        let discount = if text(&source, "unit_discount").is_empty() {
+            Decimal::ZERO
+        } else {
+            let amount = decimal(&source, "unit_discount", false)?;
+            if amount != money(amount, places) || amount > list_price {
+                return Err(bilibi_agent_api::invalid(
+                    "lines",
+                    format!("Line {}: enter a unit discount in the currency's precision up to the unit price.", i + 1),
+                ));
+            }
+            amount
+        };
+        // Downstream invoicing uses the charged unit price and recomputes the same tax.
+        let price = list_price - discount;
         let rate = decimal(&source, "tax_rate", false)?;
         if rate > Decimal::from(100) {
             return Err(bilibi_agent_api::invalid(
@@ -384,7 +405,7 @@ pub(crate) async fn prepare(
         let tax = money(net * rate / Decimal::from(100), places);
         subtotal += net;
         tax_total += tax;
-        lines.push(json!({"line_number":i+1,"product_id":product_id,"product_code":product_code,"description":required(&source,"description",500)?,"unit":required(&source,"unit",80)?,"quantity":quantity.to_string(),"unit_price":price.to_string(),"tax_code":required(&source,"tax_code",50)?,"tax_rate":rate.to_string(),"subtotal":net.to_string(),"tax_total":tax.to_string(),"total":(net+tax).to_string()}));
+        lines.push(json!({"line_number":i+1,"product_id":product_id,"product_code":product_code,"description":required(&source,"description",500)?,"unit":required(&source,"unit",80)?,"quantity":quantity.to_string(),"unit_price":price.to_string(),"list_unit_price":list_price.to_string(),"unit_discount":discount.to_string(),"tax_code":required(&source,"tax_code",50)?,"tax_rate":rate.to_string(),"subtotal":net.to_string(),"tax_total":tax.to_string(),"total":(net+tax).to_string()}));
     }
     let valid_until = if kind == "quotation" {
         let d = date(v, "valid_until")?;
@@ -398,7 +419,7 @@ pub(crate) async fn prepare(
     } else {
         None
     };
-    p.facts = json!({"customer_kind":customer_kind,"customer_id":identity.record_id(),"customer_code":customer_code,"currency_code":currency.code,"price_on":price_on,"valid_until":valid_until,"reference":text(v,"reference"),"lines":lines,"subtotal":money(subtotal,places).to_string(),"tax_total":money(tax_total,places).to_string(),"total":money(subtotal+tax_total,places).to_string()});
+    p.facts = json!({"customer_kind":customer_kind,"customer_id":identity.record_id(),"customer_code":customer_code,"customer_name":identity.name,"billing_address":billing_address,"issuer_name":issuer_name,"currency_code":currency.code,"price_on":price_on,"valid_until":valid_until,"reference":text(v,"reference"),"lines":lines,"subtotal":money(subtotal,places).to_string(),"tax_total":money(tax_total,places).to_string(),"total":money(subtotal+tax_total,places).to_string()});
     if text(v, "reference").chars().count() > 200 {
         return Err(bilibi_agent_api::invalid(
             "reference",

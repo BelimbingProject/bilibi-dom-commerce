@@ -1,8 +1,6 @@
-//! The existing delivery download backed by the shared print compiler.
+//! Sales document downloads use the same private render path.
 use crate::{
-    delivery_layout::{CONTRACT, KEY},
-    prepare::text,
-    Record, Sales, VIEW,
+    delivery_layout::CONTRACT, prepare::text, sales_layout, sales_print_values, Record, Sales, VIEW,
 };
 use bilibi_artifacts::{Artifacts, Operation, Owner, PdfOptions, Reference};
 use bilibi_branding::Branding;
@@ -17,7 +15,7 @@ use std::sync::Arc;
 
 pub(crate) const SERVICE: &str = "commerce/sales.delivery-print";
 
-pub(crate) struct DeliveryPrint {
+pub(crate) struct SalesPrint {
     sales: Arc<Sales>,
     artifacts: Arc<Artifacts>,
     templates: Arc<Templates>,
@@ -25,7 +23,7 @@ pub(crate) struct DeliveryPrint {
     settings: Arc<Settings>,
 }
 
-impl DeliveryPrint {
+impl SalesPrint {
     pub fn new(
         sales: Arc<Sales>,
         artifacts: Arc<Artifacts>,
@@ -43,14 +41,15 @@ impl DeliveryPrint {
     }
 }
 
-fn id(reference: Option<&Reference>) -> Result<i64> {
-    reference
-        .filter(|r| r.kind == "delivery-order")
-        .and_then(|r| r.subject.parse().ok())
-        .filter(|id| *id > 0)
-        .ok_or(Error::NotFound)
+fn record_kind(kind: &str) -> Option<&'static str> {
+    Some(match kind {
+        "delivery-order" => "delivery",
+        "quotation" => "quotation",
+        "order-confirmation" => "order",
+        _ => return None,
+    })
 }
-impl Owner for DeliveryPrint {
+impl Owner for SalesPrint {
     fn owner_id(&self) -> &'static str {
         "commerce/sales"
     }
@@ -67,8 +66,19 @@ impl Owner for DeliveryPrint {
                 return Err(Error::Forbidden);
             }
             bilibi_company::authorize_work_target(c, s, company.get(), VIEW).await?;
-            let id = id(reference)?;
-            c.query_opt("SELECT id FROM commerce_sales_documents WHERE tenant_id=$1 AND company_id=$2 AND kind='delivery' AND id=$3", &[&s.tenant(),&company.get(),&id]).await?.ok_or(Error::NotFound)?;
+            let reference = reference.ok_or(Error::NotFound)?;
+            let kind = record_kind(&reference.kind).ok_or(Error::NotFound)?;
+            let id = reference
+                .subject
+                .parse::<i64>()
+                .ok()
+                .filter(|id| *id > 0)
+                .ok_or(Error::NotFound)?;
+            let row = c.query_opt("SELECT status FROM commerce_sales_documents WHERE tenant_id=$1 AND company_id=$2 AND kind=$3 AND id=$4", &[&s.tenant(),&company.get(),&kind,&id]).await?.ok_or(Error::NotFound)?;
+            let status: &str = row.try_get(0)?;
+            if kind == "quotation" && !sales_layout::QUOTATION.states.contains(&status) {
+                return Err(Error::NotFound);
+            }
             Ok(())
         })
     }
@@ -148,9 +158,20 @@ fn document(
         .map_err(|_| Error::Invalid)
 }
 
-impl Download<Scope, Error> for DeliveryPrint {
+impl Download<Scope, Error> for SalesPrint {
     fn serve<'a>(&'a self, r: DownloadRequest<'a, Scope>) -> DownloadFuture<'a, Error> {
         Box::pin(async move {
+            let (kind, reference_kind, contract, state_date) = match r.operation {
+                "delivery_pdf" => ("delivery", "delivery-order", &CONTRACT, Some("shipped")),
+                "quotation_pdf" => ("quotation", "quotation", &sales_layout::QUOTATION, None),
+                "order_confirmation_pdf" => (
+                    "order",
+                    "order-confirmation",
+                    &sales_layout::ORDER,
+                    Some("confirmed"),
+                ),
+                _ => return Err(Error::NotFound),
+            };
             let company = r.scope.current_company().ok_or(Error::Forbidden)?;
             let id = r
                 .path
@@ -158,20 +179,32 @@ impl Download<Scope, Error> for DeliveryPrint {
                 .and_then(|id| id.parse::<i64>().ok())
                 .filter(|id| *id > 0)
                 .ok_or(Error::NotFound)?;
-            let record = self
-                .sales
-                .get(r.scope, company.get(), "delivery", id)
-                .await?;
-            let ship_date = if record.status == "draft" {
-                None
-            } else {
+            let record = self.sales.get(r.scope, company.get(), kind, id).await?;
+            if !contract.states.contains(&record.status.as_str()) {
+                return Err(Error::NotFound);
+            }
+            let event_date = if let Some(state) = state_date.filter(|_| record.status != "draft") {
                 self.sales
                     .history(r.scope, company.get(), id)
                     .await?
                     .iter()
-                    .find(|event| event["to"] == "shipped")
+                    .find(|event| event["to"] == state)
                     .and_then(|event| event["at"].as_str()?.parse::<jiff::Timestamp>().ok())
                     .map(|when| when.to_zoned(jiff::tz::TimeZone::UTC).date())
+            } else {
+                None
+            };
+            if kind == "order" && event_date.is_none() {
+                return Err(Error::NotFound);
+            }
+            let quotation_number = match (kind, record.facts["quotation_id"].as_i64()) {
+                ("order", Some(quotation_id)) => Some(
+                    self.sales
+                        .get(r.scope, company.get(), "quotation", quotation_id)
+                        .await?
+                        .code,
+                ),
+                _ => None,
             };
             let mut client = self.sales.db.get().await?;
             let language = self
@@ -188,23 +221,29 @@ impl Download<Scope, Error> for DeliveryPrint {
                 .resolve_print(
                     &**client,
                     r.scope,
-                    KEY,
+                    contract.key,
                     Some(company),
                     language.value.as_str().unwrap_or("en"),
                     None,
                 )
                 .await?;
-            let compiled = CONTRACT
+            let compiled = contract
                 .compile(&selected.language, &selected.layout)
                 .map_err(|_| Error::Invalid)?;
             let accent = self.branding.accent(&**client).await?;
-            let inline = document(
-                &compiled,
-                &record,
-                ship_date,
-                selected.language.split('-').next() == Some("ms"),
-                accent,
-            )?;
+            let malay = selected.language.split('-').next() == Some("ms");
+            let inline = if kind == "delivery" {
+                document(&compiled, &record, event_date, malay, accent)?
+            } else {
+                sales_print_values::render(
+                    &compiled,
+                    &record,
+                    event_date,
+                    quotation_number.as_deref(),
+                    malay,
+                    accent,
+                )?
+            };
             let version = match selected.origin {
                 Origin::Packaged { version } => format!("packaged-{version}"),
                 Origin::Company { revision, .. } | Origin::Tenant { revision } => {
@@ -213,14 +252,14 @@ impl Download<Scope, Error> for DeliveryPrint {
             };
             let options = PdfOptions::default()
                 .template_version(format!("{}-{version}", selected.language))
-                .data_version(format!("{}-revision-{}", CONTRACT.version, record.revision));
+                .data_version(format!("{}-revision-{}", contract.version, record.revision));
             let documents = self.artifacts.for_owner(r.scope, company, self);
             let metadata = documents
                 .render_inline_document(
                     &mut client,
                     Reference {
                         subject: id.to_string(),
-                        kind: "delivery-order".into(),
+                        kind: reference_kind.into(),
                     },
                     inline,
                     &options,
@@ -234,7 +273,7 @@ impl Download<Scope, Error> for DeliveryPrint {
             Ok(FileBody::inline(
                 document.bytes,
                 "application/pdf",
-                &format!("delivery-order-{id}.pdf"),
+                &format!("{reference_kind}-{id}.pdf"),
             ))
         })
     }

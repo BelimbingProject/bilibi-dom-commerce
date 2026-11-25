@@ -30,7 +30,7 @@ Service{id:SERVICE,factory:|services|{
 crate::operations::bind(services.get::<Events>(bilibi_events::SERVICE)?,services.get(bilibi_records::SERVICE)?,services.get("base/tenancy.parties")?,services.get(bilibi_currency::SERVICE)?,services.get(bilibi_product::SERVICE)?)?;
 Ok(Arc::new(Sales::new(services.get::<Db>("base/database.pool")?.as_ref().clone())))
 }},
-Service{id:crate::print::SERVICE,factory:|services|Ok(Arc::new(bilibi_ui::download::DownloadService::<Scope,bilibi_database::Error>(Arc::new(crate::print::DeliveryPrint::new(
+Service{id:crate::print::SERVICE,factory:|services|Ok(Arc::new(bilibi_ui::download::DownloadService::<Scope,bilibi_database::Error>(Arc::new(crate::print::SalesPrint::new(
     services.get::<Sales>(SERVICE)?,services.get("base/artifacts.store")?,
     services.get(bilibi_templates::SERVICE)?,services.get(bilibi_branding::SERVICE)?,
     services.get("base/settings.store")?
@@ -111,3 +111,6 @@ bilibi_menu::contribute!(
     .order(40)
 );
 inventory::submit! {Contribution::new(bilibi_module_registry::contributions::DOWNLOADS,"commerce/sales.delivery-pdf",provenance!(),&bilibi_module_registry::contributions::Download{path:"/commerce/delivery-orders/{id}/pdf",service:crate::print::SERVICE,operation:"delivery_pdf",access:Access::Capability(VIEW)})}
+
+inventory::submit! {Contribution::new(bilibi_module_registry::contributions::DOWNLOADS,"commerce/sales.quotation-pdf",provenance!(),&bilibi_module_registry::contributions::Download{path:"/commerce/quotations/{id}/pdf",service:crate::print::SERVICE,operation:"quotation_pdf",access:Access::Capability(VIEW)})}
+inventory::submit! {Contribution::new(bilibi_module_registry::contributions::DOWNLOADS,"commerce/sales.order-confirmation-pdf",provenance!(),&bilibi_module_registry::contributions::Download{path:"/commerce/sales-orders/{id}/confirmation.pdf",service:crate::print::SERVICE,operation:"order_confirmation_pdf",access:Access::Capability(VIEW)})}
