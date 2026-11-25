@@ -210,7 +210,7 @@ impl WriteHandler for Write {
                         record.revision,
                         index + 1
                     );
-                    let payload = json!({"company_id":p.company,"order_id":record.id,"order_number":record.code,"revision":record.revision,"order_status":record.status,"quotation_id":record.facts["quotation_id"],"customer_kind":record.facts["customer_kind"],"customer_id":record.facts["customer_id"],"customer_code":record.facts["customer_code"],"currency_code":record.facts["currency_code"],"subtotal":record.facts["subtotal"],"tax_total":record.facts["tax_total"],"total":record.facts["total"],"part_index":index+1,"part_count":lines.len(),"lines":[line]});
+                    let payload = json!({"company_id":p.company,"order_id":record.id,"order_number":record.code,"revision":record.revision,"order_status":record.status,"quotation_id":record.facts["quotation_id"],"customer_kind":record.facts["customer_kind"],"customer_id":record.facts["customer_id"],"customer_code":record.facts["customer_code"],"currency_code":record.facts["currency_code"],"subtotal":record.facts["subtotal"],"tax_total":record.facts["tax_total"],"total":record.facts["total"],"part_index":index+1,"part_count":lines.len(),"lines":[order_event_line(line)]});
                     services
                         .events
                         .record(
@@ -248,6 +248,56 @@ impl WriteHandler for Write {
         })
     }
 }
+fn order_event_line(line: &Value) -> Value {
+    [
+        "line_number",
+        "product_id",
+        "product_code",
+        "item_id",
+        "item_code",
+        "description",
+        "quantity",
+        "unit",
+        "unit_price",
+        "tax_code",
+        "tax_rate",
+        "subtotal",
+        "tax_total",
+        "total",
+    ]
+    .into_iter()
+    .filter_map(|key| line.get(key).map(|value| (key.to_owned(), value.clone())))
+    .collect::<serde_json::Map<_, _>>()
+    .into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn order_events_keep_charged_price_and_tax_without_discount_details() {
+        let expected = json!({
+            "line_number": 1,
+            "product_id": null,
+            "product_code": null,
+            "description": "Carton",
+            "quantity": "2",
+            "unit": "EA",
+            "unit_price": "90.00",
+            "tax_code": "SV6",
+            "tax_rate": "6",
+            "subtotal": "180.00",
+            "tax_total": "10.80",
+            "total": "190.80"
+        });
+        let mut snapshot = expected.clone();
+        snapshot["list_unit_price"] = json!("100.00");
+        snapshot["unit_discount"] = json!("10.00");
+        assert_eq!(order_event_line(&snapshot), expected);
+    }
+}
+
 // Base Agent API accepts its documented schema dialect, not full JSON Schema.
 // Object fields are closed by default; cross-field and array bounds live in prepare.
 fn schema(action: &str) -> Value {
