@@ -1,0 +1,73 @@
+{
+  "blocks": [
+    {
+      "type": "heading",
+      "text": "Delivery order"
+    },
+    {
+      "type": "field",
+      "field": "number"
+    },
+    {
+      "type": "field",
+      "field": "status"
+    },
+    {
+      "type": "field",
+      "field": "ship_date"
+    },
+    {
+      "type": "field",
+      "field": "issuer"
+    },
+    {
+      "type": "field",
+      "field": "recipient"
+    },
+    {
+      "type": "field",
+      "field": "ship_to"
+    },
+    {
+      "type": "field",
+      "field": "order"
+    },
+    {
+      "type": "field",
+      "field": "reference",
+      "label": "Reference"
+    },
+    {
+      "type": "table",
+      "rows": "lines",
+      "columns": [
+        {
+          "field": "order_line"
+        },
+        {
+          "field": "product"
+        },
+        {
+          "field": "item"
+        },
+        {
+          "field": "ordered"
+        },
+        {
+          "field": "quantity"
+        },
+        {
+          "field": "unit"
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "text": "Prepared by _______________________"
+    },
+    {
+      "type": "paragraph",
+      "text": "Received by _______________________"
+    }
+  ]
+}

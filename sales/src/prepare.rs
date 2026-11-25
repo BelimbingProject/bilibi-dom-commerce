@@ -160,7 +160,7 @@ pub(crate) async fn prepare(
         p.old = Some(old);
     }
     if kind == "delivery" {
-        return crate::delivery::prepare(c, scope, v, p).await;
+        return crate::delivery::prepare(c, scope, v, p, parties).await;
     }
     if action.ends_with("transition") {
         let old = p.old.as_ref().ok_or(Error::NotFound)?;

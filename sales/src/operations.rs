@@ -253,7 +253,7 @@ impl WriteHandler for Write {
 fn schema(action: &str) -> Value {
     if action == "delivery.create" {
         return json!({"type":"object","required":["company_id"],"properties":{
-            "company_id":{"type":"integer","minimum":1},"order_id":{"type":"integer","minimum":1},"order_number":{"type":"integer","minimum":1},"reference":{"type":"string","maxLength":200},
+            "company_id":{"type":"integer","minimum":1},"order_id":{"type":"integer","minimum":1},"order_number":{"type":"integer","minimum":1},"reference":{"type":"string","maxLength":200},"ship_to":{"type":"string","maxLength":1600},
             "lines":{"type":"array","items":{"type":"object","required":["order_line_number","quantity"],"properties":{"order_line_number":{"type":"integer","minimum":1},"quantity":{"type":"string","maxLength":30}}}}
         }});
     }
